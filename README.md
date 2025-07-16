@@ -41,15 +41,12 @@ Flux is a high-performance message transport library for Rust, implementing LMAX
 │  │  • Batch processing (8K-128K slots)                   │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                               │
-│  Throughput: 38M msg/sec (Apple Silicon)                    │
-│  Latency: <1μs (cache-local operations)                     │
-│                                                               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Getting Started (Developer Friendly)
+## Getting Started
 
-Flux is easy to use for basic message passing. Here’s a minimal example:
+Flux is easy to use for basic message passing. Here's a minimal example:
 
 ```rust
 use flux::disruptor::{RingBuffer, RingBufferConfig, WaitStrategyType};
@@ -79,7 +76,7 @@ for message in messages {
 }
 ```
 
-## Low-Level, High-Performance Usage
+## High-Performance Usage
 
 For maximum throughput, use the memory-mapped or Linux-optimized ring buffer and large batch sizes:
 
@@ -115,10 +112,7 @@ And use the `LinuxRingBuffer` for NUMA, huge pages, and affinity.
 
 ## Performance
 
-> **Recent Performance Milestone (June 2024):**
-> Flux achieved **11.33 million messages/second** on Apple Silicon (8 consumers, 64-byte messages, 64K batch, 10s run) using aggressive batching, zero-copy slices, and thread affinity. [See full details.](docs/performance.md)
-
-Flux is designed for extreme throughput and low latency. Here are real numbers from our benchmarks:
+Flux is designed for high throughput and low latency. Here are example numbers from our benchmarks:
 
 | Test Scenario                | Platform         | Throughput         | Notes                        |
 |------------------------------|------------------|--------------------|------------------------------|
@@ -127,7 +121,24 @@ Flux is designed for extreme throughput and low latency. Here are real numbers f
 | Realistic (Linux, NUMA, HP)  | x86_64 Linux     | 50-100M msg/sec    | NUMA, huge pages, affinity   |
 | UDP Transport (in-memory)    | Apple Silicon    | 10-20M msg/sec     | Reliable UDP, batching       |
 
-> **We have a play here:** Flux matches or exceeds Aeron/Disruptor in-memory throughput on modern hardware, and is ready for production use in high-throughput, low-latency systems.
+**Note:** Performance varies significantly based on:
+- **Configuration**: Batch size, buffer size, number of consumers
+- **Validation**: Whether message validation/checksums are enabled
+- **Hardware**: CPU cores, memory bandwidth, cache size
+- **Optimizations**: SIMD, memory mapping, CPU affinity
+
+Flux matches or exceeds Aeron/Disruptor in-memory throughput on modern hardware, and is ready for production use in high-throughput, low-latency systems.
+
+## Safety
+
+Flux uses unsafe code for performance-critical operations like SIMD operations and memory mapping. All unsafe code is:
+
+- **Carefully documented** with safety explanations
+- **Bounded by safety checks** to prevent undefined behavior  
+- **Thoroughly tested** for edge cases and race conditions
+- **Performance-justified** with measurable benefits
+
+See [SAFETY.md](./SAFETY.md) for comprehensive documentation of all unsafe code patterns.
 
 ## Features
 
@@ -163,24 +174,24 @@ flux = "0.1.0"
 
 ```bash
 # Basic usage
-cargo run --example basic_usage
+cargo run --example example_basic_usage
 
 # UDP transport
-cargo run --example udp_transport
+cargo run --example example_udp_transport
 
 # Linux optimizations
-cargo run --example linux_ultra_bench --features linux_optimized
+cargo run --example example_linux_optimized --features linux_optimized
 
-# macOS optimizations
-cargo run --example realistic_high_throughput
+# Realistic high throughput
+cargo run --example example_realistic_validated
 ```
 
 ## Benchmarks
 
 ```bash
 # Performance benchmarks
-cargo run --release --bin extreme_bench
-cargo run --release --bin macos_ultra_bench
+cargo run --release --bin bench_extreme
+cargo run --release --bin bench_macos_ultra_optimized
 ```
 
 ## Documentation

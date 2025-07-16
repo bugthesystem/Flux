@@ -1,17 +1,17 @@
 # Getting Started with Flux
 
-Welcome to **Flux**, a high-performance message transport library built for demanding applications that require ultra-low latency and maximum throughput.
+Welcome to Flux, a high-performance message transport library built for demanding applications that require low latency and high throughput.
 
-## 🎯 What is Flux?
+## What is Flux?
 
 Flux is a zero-copy, lock-free message transport library that combines:
 
-- **LMAX Disruptor pattern** for ultra-fast producer-consumer scenarios
+- **LMAX Disruptor pattern** for fast producer-consumer scenarios
 - **Mechanical sympathy** with CPU cache optimization
 - **Reliable UDP transport** with forward error correction
 - **Cross-platform support** for Linux and macOS
 
-## 📋 Prerequisites
+## Prerequisites
 
 ### System Requirements
 
@@ -31,7 +31,7 @@ rustup component add clippy rustfmt
 cargo install cargo-flamegraph  # For profiling (optional)
 ```
 
-## 🚀 Installation
+## Installation
 
 ### 1. Add Flux to Your Project
 
@@ -52,7 +52,7 @@ crossbeam = "0.8"
 parking_lot = "0.12"
 ```
 
-## 🔧 Your First Flux Application
+## Your First Flux Application
 
 ### Basic Ring Buffer Usage
 
@@ -127,7 +127,7 @@ fn high_performance_example() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## 🎚️ Wait Strategies
+## Wait Strategies
 
 Choose the right wait strategy for your use case:
 
@@ -152,7 +152,7 @@ let buffer = RingBuffer::new(1024, WaitStrategy::Timeout {
 });
 ```
 
-## ⚡ Performance Tips
+## Performance Tips
 
 ### 1. Buffer Sizing
 
@@ -191,7 +191,7 @@ set_thread_affinity(0)?; // Producer on core 0
 set_thread_affinity(1)?; // Consumer on core 1
 ```
 
-## 🐛 Common Issues and Solutions
+## Common Issues and Solutions
 
 ### Issue 1: Low Performance
 
@@ -221,7 +221,7 @@ set_thread_affinity(1)?; // Consumer on core 1
 - Use zero-copy operations consistently
 - Avoid unnecessary allocations in hot paths
 
-## 📊 Basic Benchmarking
+## Basic Benchmarking
 
 ```rust
 use std::time::Instant;
@@ -247,18 +247,10 @@ fn benchmark_throughput() {
 }
 ```
 
-## 🎓 Next Steps
+## Next Steps
 
-1. **Read the [Architecture Guide](./architecture.md)** to understand Flux's design
-2. **Follow the [Performance Tuning](./performance.md)** guide for optimization
-3. **Check platform-specific setup** in [Platform Setup](./platform-setup.md)
-4. **Explore [Examples](../examples/)** for real-world usage patterns
-
-## 🆘 Getting Help
-
-- **Documentation**: Check other guides in the `docs/` folder
-- **Examples**: Look at the `examples/` directory
-- **Issues**: Report bugs on GitHub
-- **Performance**: Run benchmarks and profiling tools
-
-Happy coding with Flux! 🚀 
+- Read the [Architecture Guide](./architecture.md) to understand the design
+- Explore [Performance Tuning](./performance.md) for optimization techniques
+- Check [Platform Setup](./platform-setup.md) for system-specific configurations
+- Run the examples in the `examples/` directory
+- Review the API documentation for detailed usage information 

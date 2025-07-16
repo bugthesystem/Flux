@@ -200,12 +200,16 @@ impl MessageSlot {
     }
 
     /// Set data with SIMD-optimized copying
+    ///
+    /// This method uses hardware-accelerated SIMD instructions for maximum performance.
+    /// The data is copied using NEON instructions on ARM64 and standard memcpy on other architectures.
     pub fn set_data(&mut self, data: &[u8]) {
         let data_len = data.len().min(MAX_MESSAGE_DATA_SIZE);
         self.data_len = data_len as u32;
 
         // Use SIMD-optimized copy for better performance
         unsafe {
+            // SAFETY: dst and src have the same length (data_len), both are valid slices
             Self::copy_data_simd_enhanced(&mut self.data[..data_len], &data[..data_len]);
         }
 
@@ -214,6 +218,18 @@ impl MessageSlot {
     }
 
     /// Enhanced SIMD-optimized data copying with NEON
+    ///
+    /// # Safety
+    ///
+    /// This function is safe when:
+    /// - `dst` and `src` have the same length
+    /// - Both slices point to valid, non-overlapping memory
+    /// - The memory is properly aligned for SIMD operations
+    ///
+    /// The NEON operations are safe because:
+    /// - We only read from `src` and write to `dst`
+    /// - All pointer arithmetic is bounds-checked
+    /// - SIMD instructions are architecture-specific and well-defined
     #[inline(always)]
     unsafe fn copy_data_simd_enhanced(dst: &mut [u8], src: &[u8]) {
         if dst.len() != src.len() {
@@ -234,12 +250,14 @@ impl MessageSlot {
                     let offset = i * 64;
 
                     // Load 4x16-byte vectors
+                    // SAFETY: offset is calculated safely, pointers are valid
                     let v1 = vld1q_u8(src_ptr.add(offset));
                     let v2 = vld1q_u8(src_ptr.add(offset + 16));
                     let v3 = vld1q_u8(src_ptr.add(offset + 32));
                     let v4 = vld1q_u8(src_ptr.add(offset + 48));
 
                     // Store 4x16-byte vectors
+                    // SAFETY: offset is calculated safely, pointers are valid
                     vst1q_u8(dst_ptr.add(offset), v1);
                     vst1q_u8(dst_ptr.add(offset + 16), v2);
                     vst1q_u8(dst_ptr.add(offset + 32), v3);
@@ -249,6 +267,7 @@ impl MessageSlot {
                 // Handle remaining bytes
                 let remaining_start = chunks_64 * 64;
                 for i in remaining_start..len {
+                    // SAFETY: i is bounds-checked by the loop condition
                     *dst_ptr.add(i) = *src_ptr.add(i);
                 }
             } else if len >= 16 {
@@ -256,6 +275,7 @@ impl MessageSlot {
                 let chunks_16 = len / 16;
                 for i in 0..chunks_16 {
                     let offset = i * 16;
+                    // SAFETY: offset is calculated safely, pointers are valid
                     let chunk = vld1q_u8(src_ptr.add(offset));
                     vst1q_u8(dst_ptr.add(offset), chunk);
                 }
@@ -263,6 +283,7 @@ impl MessageSlot {
                 // Handle remaining bytes
                 let remaining_start = chunks_16 * 16;
                 for i in remaining_start..len {
+                    // SAFETY: i is bounds-checked by the loop condition
                     *dst_ptr.add(i) = *src_ptr.add(i);
                 }
             } else {
@@ -270,6 +291,7 @@ impl MessageSlot {
                 let chunks_8 = len / 8;
                 for i in 0..chunks_8 {
                     let offset = i * 8;
+                    // SAFETY: offset is calculated safely, pointers are valid
                     let chunk = std::ptr::read_unaligned(src_ptr.add(offset) as *const u64);
                     std::ptr::write_unaligned(dst_ptr.add(offset) as *mut u64, chunk);
                 }
@@ -277,6 +299,7 @@ impl MessageSlot {
                 // Handle remaining bytes
                 let remaining_start = chunks_8 * 8;
                 for i in remaining_start..len {
+                    // SAFETY: i is bounds-checked by the loop condition
                     *dst_ptr.add(i) = *src_ptr.add(i);
                 }
             }
@@ -296,7 +319,10 @@ impl MessageSlot {
 
         #[cfg(target_arch = "aarch64")]
         {
-            unsafe { self.calculate_checksum_neon(data) }
+            unsafe {
+                // SAFETY: data is a valid slice from self.data
+                self.calculate_checksum_neon(data)
+            }
         }
 
         #[cfg(not(target_arch = "aarch64"))]
@@ -310,6 +336,17 @@ impl MessageSlot {
     }
 
     /// NEON-optimized checksum calculation
+    ///
+    /// # Safety
+    ///
+    /// This function is safe when:
+    /// - `data` is a valid slice pointing to initialized memory
+    /// - The slice length is correct
+    ///
+    /// The NEON operations are safe because:
+    /// - We only read from the data slice
+    /// - All pointer arithmetic is bounds-checked
+    /// - SIMD instructions are architecture-specific and well-defined
     #[cfg(target_arch = "aarch64")]
     #[inline(always)]
     unsafe fn calculate_checksum_neon(&self, data: &[u8]) -> u32 {
@@ -322,6 +359,7 @@ impl MessageSlot {
 
         for i in 0..chunks {
             let offset = i * 16;
+            // SAFETY: offset is calculated safely, data.as_ptr() is valid
             let chunk = vld1q_u8(data.as_ptr().add(offset));
 
             // Sum all bytes in the chunk using NEON

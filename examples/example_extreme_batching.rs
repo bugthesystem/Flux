@@ -41,6 +41,7 @@ fn main() {
     // Shared atomic counter for coordination
     let total_sent = Arc::new(AtomicU64::new(0));
     let total_received = Arc::new(AtomicU64::new(0));
+    let processed_messages = Arc::new(AtomicU64::new(0));
 
     // ULTIMATE PRODUCERS - 8 producers for maximum throughput
     let producer_handles: Vec<_> = (0..8)
@@ -57,12 +58,12 @@ fn main() {
                 while start_time.elapsed() < Duration::from_secs(10) {
                     if let Some((seq, slots)) = buffer.try_claim_slots(batch_size) {
                         for (i, slot) in slots.iter_mut().enumerate() {
-                            let message = generate_ultra_minimal_message(messages + (i as u64));
+                            let message = generate_ultra_minimal_message(seq + (i as u64));
                             slot.set_data(&message);
                             slot.set_sequence(seq + (i as u64));
-                            messages += 1;
                         }
                         buffer.publish_batch(seq, slots.len());
+                        messages += slots.len() as u64;
                         total_sent.fetch_add(slots.len() as u64, Ordering::Relaxed);
                     }
                 }
@@ -75,7 +76,7 @@ fn main() {
     let consumer_handles: Vec<_> = (0..8)
         .map(|consumer_id| {
             let buffer = Arc::clone(&buffer);
-            let total_received = Arc::clone(&total_received);
+            let processed_messages = Arc::clone(&processed_messages);
             thread::spawn(move || {
                 let _ = pin_to_cpu(consumer_id + 8); // Use cores 8-15
                 let _ = macos_optimizations::ThreadOptimizer::set_max_priority();
@@ -86,13 +87,15 @@ fn main() {
                 while start_time.elapsed() < Duration::from_secs(10) {
                     let slots = buffer.try_consume_batch(consumer_id, batch_size);
                     if !slots.is_empty() {
-                        // Ultra-fast processing - just count valid sequences
+                        // Count all valid messages in the batch
+                        let mut batch_messages = 0u64;
                         for slot in slots {
                             if slot.sequence() > 0 {
+                                batch_messages += 1;
                                 messages += 1;
                             }
                         }
-                        total_received.fetch_add(slots.len() as u64, Ordering::Relaxed);
+                        processed_messages.fetch_add(batch_messages, Ordering::Relaxed);
                     }
                 }
                 messages
@@ -113,7 +116,7 @@ fn main() {
 
     let duration = start_time.elapsed();
     let final_sent = total_sent.load(Ordering::Relaxed);
-    let final_received = total_received.load(Ordering::Relaxed);
+    let final_received = processed_messages.load(Ordering::Relaxed);
 
     println!("🔥 ULTIMATE THROUGHPUT RESULTS:");
     println!("=================================");

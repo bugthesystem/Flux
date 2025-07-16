@@ -104,11 +104,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_numa_functions() {
-        let node = get_numa_node().unwrap();
-        assert_eq!(node, 0);
-
-        set_numa_policy(NumaPolicy::Default).unwrap();
-        set_numa_policy(NumaPolicy::Bind(0)).unwrap();
+    fn test_numa_allocator() {
+        let allocator = NumaAllocator::new().unwrap();
+        assert_eq!(allocator.num_cpus() > 0, true);
     }
 }

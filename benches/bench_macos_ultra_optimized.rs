@@ -249,7 +249,7 @@ fn main() {
     println!("Messages processed: {}", total_processed);
     println!("Processing rate: {:.1}%", processing_rate);
     println!("Duration: {:?}", duration);
-    println!("Throughput: {:.0} K messages/second", throughput / 1000.0);
+    println!("Throughput: {:.0} M messages/second", throughput / 1_000_000.0);
     println!("Average message size: ~1KB");
     println!("Optimizations: P-core pinning, NEON SIMD, max priority, memory locking");
 

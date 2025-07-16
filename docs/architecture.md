@@ -1,14 +1,10 @@
 # Flux Architecture Guide
 
-> **Ultra Performance Milestone (June 2024):**
->
-> Flux achieved **11.33 million messages/second** on Apple Silicon (8 consumers, 64-byte messages, 64K batch, 10s run) using aggressive batching, zero-copy slices, and thread affinity. See [Performance Tuning](./performance.md) for full details and key learnings.
-
 This guide provides an in-depth look at Flux's architecture, design patterns, and implementation details.
 
-## 🏗️ High-Level Architecture
+## High-Level Architecture
 
-Flux is built around several key components that work together to achieve ultra-high performance:
+Flux is built around several key components that work together to achieve high-performance message transport:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -20,15 +16,15 @@ Flux is built around several key components that work together to achieve ultra-
 │  │  (Writers)  │    │  (LMAX Style)   │    │ (Readers)   │  │
 │  └─────────────┘    └─────────────────┘    └─────────────┘  │
 │                                                             │
-│  ┌─────────────┐    ┌─────────────────┐    ┌─────────────┐  │
-│  │ UDP Transport│───▶│   Reliability   │───▶│Performance  │  │
-│  │   Layer     │    │     Layer       │    │ Monitoring  │  │
-│  └─────────────┘    └─────────────────┘    └─────────────┘  │
+│  ┌──────────────┐    ┌─────────────────┐    ┌─────────────┐ │
+│  │ UDP Transport│───▶│   Reliability   │───▶│Performance  │ │
+│  │   Layer      │    │     Layer       │    │ Monitoring  │ │
+│  └──────────────┘    └─────────────────┘    └─────────────┘ │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 🔄 LMAX Disruptor Pattern
+## LMAX Disruptor Pattern
 
 The heart of Flux is the LMAX Disruptor pattern, which provides lock-free, high-performance inter-thread communication.
 
@@ -37,14 +33,14 @@ The heart of Flux is the LMAX Disruptor pattern, which provides lock-free, high-
 ```
 Ring Buffer Layout (Cache-Aligned):
 ┌─────────────────────────────────────────────────────────────┐
-│                    Ring Buffer (Size: 2^N)                 │
+│                    Ring Buffer (Size: 2^N)                  │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  Slot 0    Slot 1    Slot 2    ...    Slot N-1    Slot 0  │
-│ ┌─────┐   ┌─────┐   ┌─────┐           ┌─────┐   ┌─────┐    │
-│ │ Msg │   │ Msg │   │ Msg │    ...    │ Msg │   │ Msg │    │
-│ │ 64B │   │ 64B │   │ 64B │           │ 64B │   │ 64B │    │
-│ └─────┘   └─────┘   └─────┘           └─────┘   └─────┘    │
+│  Slot 0    Slot 1    Slot 2    ...    Slot N-1    Slot 0    │
+│ ┌─────┐   ┌─────┐   ┌─────┐           ┌─────┐   ┌─────┐     │
+│ │ Msg │   │ Msg │   │ Msg │    ...    │ Msg │   │ Msg │     │
+│ │ 64B │   │ 64B │   │ 64B │           │ 64B │   │ 64B │     │
+│ └─────┘   └─────┘   └─────┘           └─────┘   └─────┘     │
 │                                                             │
 │   ▲                                                  ▲      │
 │   │                                                  │      │
@@ -72,16 +68,16 @@ pub struct MessageSlot {
 ```
 Sequence Coordination:
 ┌─────────────────────────────────────────────────────────────┐
-│                    Atomic Sequences                        │
+│                    Atomic Sequences                         │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  Producer Sequence ───┐                                     │
 │        (Write)        │                                     │
 │                       ▼                                     │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │            Available Sequence                           │  │
-│  │    (Last sequence published by producer)                │  │
-│  └─────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │            Available Sequence                         │  │
+│  │    (Last sequence published by producer)              │  │
+│  └───────────────────────────────────────────────────────┘  │
 │                       ▲                                     │
 │  Consumer Sequence ───┘                                     │
 │        (Read)                                               │
@@ -89,7 +85,7 @@ Sequence Coordination:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 🚀 Zero-Copy Operations
+## Zero-Copy Operations
 
 Flux achieves zero-copy through direct memory access and batch operations:
 
@@ -98,19 +94,19 @@ Flux achieves zero-copy through direct memory access and batch operations:
 ```
 Zero-Copy Memory Access:
 ┌─────────────────────────────────────────────────────────────┐
-│                    Memory Regions                          │
+│                    Memory Regions                           │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │              Ring Buffer Memory                         │  │
-│  │        (Contiguous, Cache-Aligned)                      │  │
-│  │                                                         │  │
-│  │  [Slot 0][Slot 1][Slot 2]...[Slot N-1]               │  │
-│  │     ▲                                                   │  │
-│  │     │                                                   │  │
-│  │  Direct mutable slice access                           │  │
-│  │  (No intermediate buffers)                             │  │
-│  └─────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │              Ring Buffer Memory                       │  │
+│  │        (Contiguous, Cache-Aligned)                    │  │
+│  │                                                       │  │
+│  │  [Slot 0][Slot 1][Slot 2]...[Slot N-1]                │  │
+│  │     ▲                                                 │  │
+│  │     │                                                 │  │
+│  │  Direct mutable slice access                          │  │
+│  │  (No intermediate buffers)                            │  │
+│  └───────────────────────────────────────────────────────┘  │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -120,23 +116,23 @@ Zero-Copy Memory Access:
 ```
 Batch Operations Flow:
 ┌─────────────────────────────────────────────────────────────┐
-│                    Batch Processing                        │
+│                    Batch Processing                         │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │  Producer Side:                                             │
-│  1. Claim batch of slots ─────────────────────────────────┐  │
-│  2. Write directly to slots ──────────────────────────────┤  │
-│  3. Publish entire batch ─────────────────────────────────┤  │
-│                                                           │  │
-│  Consumer Side:                                           │  │
-│  1. Check available batch ────────────────────────────────┤  │
-│  2. Read directly from slots ─────────────────────────────┤  │
-│  3. Advance consumer sequence ────────────────────────────┘  │
+│  1. Claim batch of slots ─────────────────────────────────┐ │
+│  2. Write directly to slots ──────────────────────────────┤ │
+│  3. Publish entire batch ─────────────────────────────────┤ │
+│                                                           │ │
+│  Consumer Side:                                           │ │
+│  1. Check available batch ────────────────────────────────┤ │
+│  2. Read directly from slots ─────────────────────────────┤ │
+│  3. Advance consumer sequence ────────────────────────────┘ │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 🎯 Wait Strategies
+## Wait Strategies
 
 Flux provides multiple wait strategies to balance performance and CPU usage:
 
@@ -180,7 +176,7 @@ pub enum WaitStrategy {
 }
 ```
 
-## 🔒 Thread Safety and Synchronization
+## Thread Safety and Synchronization
 
 Flux uses atomic operations and careful memory ordering to ensure thread safety:
 
@@ -219,7 +215,7 @@ pub struct RingBuffer<T> {
 }
 ```
 
-## 🌐 UDP Transport Layer
+## UDP Transport Layer
 
 The transport layer provides reliable communication over UDP:
 
@@ -248,202 +244,74 @@ UDP Transport Stack:
 
 ### Reliability Features
 
-```
-Reliability Mechanisms:
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│  Sender:                                                    │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐  │
-│  │   Message   │───▶│     FEC     │───▶│   Transmit      │  │
-│  │   Buffer    │    │   Encode    │    │   Buffer        │  │
-│  └─────────────┘    └─────────────┘    └─────────────────┘  │
-│                                                             │
-│  Receiver:                                                  │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────────┐  │
-│  │   Receive   │───▶│     FEC     │───▶│   Message       │  │
-│  │   Buffer    │    │   Decode    │    │   Delivery      │  │
-│  └─────────────┘    └─────────────┘    └─────────────────┘  │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │                 NAK Feedback                            │  │
-│  │            (Negative Acknowledgment)                    │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+- **NAK-based retransmission**: Request missing packets
+- **Forward Error Correction**: Recover from packet loss
+- **Adaptive timeouts**: Adjust based on network conditions
+- **Flow control**: Prevent overwhelming receivers
 
-## 📊 Performance Monitoring
+## Performance Considerations
 
-Flux includes comprehensive performance monitoring:
+### Cache Locality
 
-### Metrics Collection
+- Ring buffer slots are cache-line aligned (64 bytes)
+- Sequential access patterns maximize cache efficiency
+- Producer and consumer on adjacent CPU cores share cache
 
-```
-Performance Metrics:
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│  Throughput Metrics:                                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ Messages/   │  │ Bytes/      │  │ Batches/           │  │
-│  │ Second      │  │ Second      │  │ Second             │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│                                                             │
-│  Latency Metrics:                                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ P50         │  │ P95         │  │ P99                │  │
-│  │ Latency     │  │ Latency     │  │ Latency            │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│                                                             │
-│  System Metrics:                                            │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │ CPU         │  │ Memory      │  │ Cache              │  │
-│  │ Usage       │  │ Usage       │  │ Efficiency         │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+### Memory Access Patterns
+
+- Contiguous memory layout reduces cache misses
+- Power-of-2 buffer sizes enable fast modulo operations
+- Prefetching hints for predictable access patterns
+
+### Batch Processing Benefits
+
+- Amortize atomic operation costs
+- Reduce context switching overhead
+- Improve memory bandwidth utilization
+
+## Error Handling
+
+Flux provides comprehensive error handling for various failure scenarios:
+
+```rust
+pub enum FluxError {
+    RingBufferFull,           // No available slots
+    RingBufferEmpty,          // No messages to consume
+    InvalidSequence,          // Sequence number error
+    NetworkError(NetworkError), // Transport layer errors
+    ConfigurationError(String), // Invalid configuration
+}
 ```
 
-## 🔧 Optimization Techniques
+## Configuration Options
 
-### Cache Optimization
+### Ring Buffer Configuration
 
-```
-Cache Line Optimization:
-┌─────────────────────────────────────────────────────────────┐
-│                    CPU Cache Layout                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  L1 Cache (32KB):                                           │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │     Hot Data (Sequences, Active Slots)                 │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                             │
-│  L2 Cache (256KB):                                          │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │     Recent Ring Buffer Data                            │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                             │
-│  L3 Cache (8MB):                                            │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │     Full Ring Buffer + Metadata                        │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```rust
+pub struct RingBufferConfig {
+    pub size: usize,                    // Must be power of 2
+    pub num_consumers: usize,           // Number of consumers
+    pub wait_strategy: WaitStrategyType, // Wait strategy
+    pub use_huge_pages: bool,           // Linux optimization
+    pub numa_node: Option<usize>,       // NUMA node binding
+    pub enable_cache_prefetch: bool,    // Prefetch optimization
+    pub enable_simd: bool,              // SIMD acceleration
+    pub optimal_batch_size: usize,      // Recommended batch size
+}
 ```
 
-### NUMA Awareness
+### Transport Configuration
 
-```
-NUMA Topology:
-┌─────────────────────────────────────────────────────────────┐
-│                    NUMA Node Layout                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Node 0:                        Node 1:                    │
-│  ┌─────────────────────────┐    ┌─────────────────────────┐  │
-│  │  CPU 0-7                │    │  CPU 8-15               │  │
-│  │  ┌─────────────────────┐│    │  ┌─────────────────────┐│  │
-│  │  │    Local Memory     ││    │  │    Local Memory     ││  │
-│  │  │      (8GB)          ││    │  │      (8GB)          ││  │
-│  │  └─────────────────────┘│    │  └─────────────────────┘│  │
-│  └─────────────────────────┘    └─────────────────────────┘  │
-│                                                             │
-│  Strategy: Pin producer/consumer to same NUMA node         │
-│           for optimal memory access                         │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```rust
+pub struct TransportConfig {
+    pub local_address: SocketAddr,
+    pub remote_address: SocketAddr,
+    pub buffer_size: usize,
+    pub batch_size: usize,
+    pub timeout: Duration,
+    pub enable_fec: bool,
+    pub enable_nak: bool,
+}
 ```
 
-## 🔮 Advanced Features
-
-### Backpressure Handling
-
-```
-Backpressure Flow:
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│  Producer ─────────────────────────────────────────────────┐  │
-│     │                                                      │  │
-│     ▼                                                      │  │
-│  Ring Buffer Full? ─────────────────────────────────────────┤  │
-│     │                                                      │  │
-│     ▼                                                      │  │
-│  Yes: Apply backpressure ──────────────────────────────────┤  │
-│    - Slow down producer                                    │  │
-│    - Drop messages (if configured)                         │  │
-│    - Block until space available                           │  │
-│                                                            │  │
-│  No: Continue normal processing ───────────────────────────┘  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Multi-Producer Support
-
-```
-Multi-Producer Coordination:
-┌─────────────────────────────────────────────────────────────┐
-│                                                             │
-│  Producer 1 ────┐                                           │
-│  Producer 2 ────┼─────▶ Claim Manager ─────▶ Ring Buffer   │
-│  Producer 3 ────┘                                           │
-│                                                             │
-│  Claim Manager:                                             │
-│  - Atomic slot allocation                                   │
-│  - Sequence coordination                                    │
-│  - Publish ordering                                         │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 🎯 Design Principles
-
-### Performance First
-
-1. **Zero-Copy**: Direct memory access without intermediate buffers
-2. **Lock-Free**: Atomic operations instead of mutexes
-3. **Cache-Friendly**: 64-byte alignment and hot data locality
-4. **Batch Processing**: Amortize atomic operation costs
-
-### Reliability
-
-1. **NAK-based**: Negative acknowledgment for missing messages
-2. **FEC**: Forward error correction for network errors
-3. **Adaptive Timeouts**: Dynamic timeout adjustment
-4. **Graceful Degradation**: Fallback strategies for overload
-
-### Scalability
-
-1. **NUMA-Aware**: Optimize for multi-socket systems
-2. **Multi-Producer**: Support concurrent writers
-3. **Backpressure**: Handle overload gracefully
-4. **Resource Limits**: Configurable memory and CPU usage
-
-## 🏆 Comparison with Alternatives
-
-### vs. Traditional Message Queues
-
-```
-Traditional Queue:
-┌─────────────────────────────────────────────────────────────┐
-│  Producer → [Lock] → Queue → [Lock] → Consumer               │
-│              ↑                ↑                             │
-│         Contention        Contention                        │
-└─────────────────────────────────────────────────────────────┘
-
-Flux Ring Buffer:
-┌─────────────────────────────────────────────────────────────┐
-│  Producer → [Atomic] → Ring Buffer → [Atomic] → Consumer     │
-│                ↑                        ↑                   │
-│           Lock-Free               Lock-Free                  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Performance Advantages
-
-1. **Latency**: Sub-microsecond vs. millisecond latency
-2. **Throughput**: 30M+ vs. 100K messages/second
-3. **CPU Efficiency**: Direct memory access vs. system calls
-4. **Scalability**: Lock-free vs. lock contention
-
-This architecture guide provides the foundation for understanding Flux's design. The next sections cover [performance tuning](./performance.md) and [platform-specific optimizations](./platform-setup.md). 
+This architecture provides a solid foundation for high-performance message transport while maintaining simplicity and reliability. 

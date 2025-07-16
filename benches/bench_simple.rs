@@ -16,6 +16,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         wait_strategy: WaitStrategyType::BusySpin,
         use_huge_pages: false,
         numa_node: None,
+        optimal_batch_size: 1000,
+        enable_cache_prefetch: true,
+        enable_simd: true,
     };
 
     let mut ring_buffer = RingBuffer::new(config)?;

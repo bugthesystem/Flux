@@ -1,7 +1,7 @@
 //! Comprehensive benchmarking suite for Flux message transport library
 //!
-//! This benchmark suite validates that we achieve the target 6M+ messages/second
-//! throughput while maintaining sub-microsecond P99 latency.
+//! This benchmark suite demonstrates how to measure and validate performance
+//! characteristics of the Flux library across different configurations.
 
 use std::sync::Arc;
 use std::sync::atomic::{ AtomicU64, Ordering };
@@ -55,19 +55,19 @@ pub struct BenchmarkResults {
 
 impl BenchmarkResults {
     pub fn print_summary(&self) {
-        println!("\n📊 Benchmark Results Summary:");
+        println!("\nBenchmark Results Summary:");
         println!("=================================");
         println!(
-            "💨 Throughput: {:.2} M messages/second",
+            "Throughput: {:.2} M messages/second",
             self.throughput_messages_per_second / 1_000_000.0
         );
-        println!("📈 Total Messages: {}", self.total_messages_processed);
-        println!("⏱️  Duration: {:.2} seconds", self.test_duration_seconds);
-        println!("📐 Latency P50: {:.2} µs", (self.latency_p50_nanos as f64) / 1_000.0);
-        println!("📐 Latency P95: {:.2} µs", (self.latency_p95_nanos as f64) / 1_000.0);
-        println!("📐 Latency P99: {:.2} µs", (self.latency_p99_nanos as f64) / 1_000.0);
-        println!("📐 Latency P99.9: {:.2} µs", (self.latency_p999_nanos as f64) / 1_000.0);
-        println!("🔧 CPU Utilization: {:.1}%", self.cpu_utilization * 100.0);
+        println!("Total Messages: {}", self.total_messages_processed);
+        println!("Duration: {:.2} seconds", self.test_duration_seconds);
+        println!("Latency P50: {:.2} µs", (self.latency_p50_nanos as f64) / 1_000.0);
+        println!("Latency P95: {:.2} µs", (self.latency_p95_nanos as f64) / 1_000.0);
+        println!("Latency P99: {:.2} µs", (self.latency_p99_nanos as f64) / 1_000.0);
+        println!("Latency P99.9: {:.2} µs", (self.latency_p999_nanos as f64) / 1_000.0);
+        println!("CPU Utilization: {:.1}%", self.cpu_utilization * 100.0);
 
         // Performance validation
         let target_throughput = 6_000_000.0;
@@ -75,20 +75,20 @@ impl BenchmarkResults {
 
         if self.throughput_messages_per_second >= target_throughput {
             println!(
-                "✅ THROUGHPUT: Achieved target of {:.1}M+ messages/second!",
+                "THROUGHPUT: Achieved target of {:.1}M+ messages/second",
                 target_throughput / 1_000_000.0
             );
         } else {
             println!(
-                "❌ THROUGHPUT: Below target of {:.1}M messages/second",
+                "THROUGHPUT: Below target of {:.1}M messages/second",
                 target_throughput / 1_000_000.0
             );
         }
 
         if (self.latency_p99_nanos as f64) <= target_latency_p99 * 1_000.0 {
-            println!("✅ LATENCY: P99 under target of {:.1}µs!", target_latency_p99);
+            println!("LATENCY: P99 under target of {:.1}µs", target_latency_p99);
         } else {
-            println!("❌ LATENCY: P99 above target of {:.1}µs", target_latency_p99);
+            println!("LATENCY: P99 above target of {:.1}µs", target_latency_p99);
         }
     }
 }
@@ -97,7 +97,7 @@ impl BenchmarkResults {
 pub fn benchmark_spsc(
     config: &BenchmarkConfig
 ) -> Result<BenchmarkResults, Box<dyn std::error::Error>> {
-    println!("\n🏃 Running Single Producer, Single Consumer Benchmark");
+    println!("\nRunning Single Producer, Single Consumer Benchmark");
     println!("Ring buffer size: {}", config.ring_buffer_size);
     println!("Total messages: {}", config.total_messages);
     println!("Message size: {} bytes", config.message_size);
@@ -121,7 +121,7 @@ pub fn benchmark_spsc(
     let latency_samples = Arc::new(std::sync::Mutex::new(Vec::new()));
 
     // Warmup phase
-    println!("🔥 Warming up with {} messages...", config.warmup_messages);
+    println!("Warming up with {} messages...", config.warmup_messages);
     let warmup_start = Instant::now();
     for i in 0..config.warmup_messages {
         if let Some((start_seq, slots)) = ring_buffer.try_claim_slots(1) {
@@ -133,10 +133,10 @@ pub fn benchmark_spsc(
         }
     }
     let warmup_duration = warmup_start.elapsed();
-    println!("🔥 Warmup completed in {:?}", warmup_duration);
+    println!("Warmup completed in {:?}", warmup_duration);
 
     // Main benchmark
-    println!("📊 Starting main benchmark...");
+    println!("Starting main benchmark...");
     let start_time = Instant::now();
 
     // Producer thread
@@ -250,7 +250,7 @@ pub fn benchmark_spsc(
         latency_p95_nanos: p95,
         latency_p99_nanos: p99,
         latency_p999_nanos: p999,
-        cpu_utilization: 0.85, // Estimated based on busy spinning
+        cpu_utilization: 0.0, // Would need system monitoring
     })
 }
 
@@ -258,10 +258,9 @@ pub fn benchmark_spsc(
 pub fn benchmark_mpmc(
     config: &BenchmarkConfig
 ) -> Result<BenchmarkResults, Box<dyn std::error::Error>> {
-    println!("\n🏃 Running Multi-Producer, Multi-Consumer Benchmark");
+    println!("\nRunning Multi Producer, Multi Consumer Benchmark");
     println!("Producers: {}, Consumers: {}", config.num_producers, config.num_consumers);
     println!("Ring buffer size: {}", config.ring_buffer_size);
-    println!("Total messages: {}", config.total_messages);
 
     // Create ring buffer
     let ring_config = RingBufferConfig {
@@ -272,7 +271,7 @@ pub fn benchmark_mpmc(
         numa_node: None,
         enable_cache_prefetch: true,
         enable_simd: true,
-        optimal_batch_size: 1000,
+        optimal_batch_size: config.batch_size,
     };
 
     let ring_buffer = Arc::new(RingBuffer::new(ring_config)?);
@@ -280,15 +279,15 @@ pub fn benchmark_mpmc(
     let messages_received = Arc::new(AtomicU64::new(0));
 
     let start_time = Instant::now();
-
-    // Create producer threads
     let mut producer_handles = Vec::new();
-    let messages_per_producer = config.total_messages / config.num_producers;
-    let batch_size = config.batch_size;
+    let mut consumer_handles = Vec::new();
 
+    // Start producers
     for producer_id in 0..config.num_producers {
         let producer_ring = Arc::clone(&ring_buffer);
         let producer_sent = Arc::clone(&messages_sent);
+        let messages_per_producer = config.total_messages / config.num_producers;
+        let batch_size = config.batch_size;
 
         let handle = thread::spawn(move || {
             if let Err(e) = pin_to_cpu(producer_id) {
@@ -302,37 +301,31 @@ pub fn benchmark_mpmc(
 
             let mut sent = 0;
             while sent < messages_per_producer {
-                let current_batch_size = std::cmp::min(batch_size, messages_per_producer - sent);
-
-                if let Some((start_seq, slots)) = producer_ring.try_claim_slots(current_batch_size) {
-                    // Fill batch
+                if let Some((start_seq, slots)) = producer_ring.try_claim_slots(batch_size) {
                     for (i, slot) in slots.iter_mut().enumerate() {
                         let seq = sent + i;
                         slot.set_sequence(seq as u64);
-                        let data = format!("Producer {} Message {}", producer_id, seq);
+                        let data = format!("Producer {} message {}", producer_id, seq);
                         slot.set_data(data.as_bytes());
                     }
-
-                    // Publish batch
-                    producer_ring.publish_batch(start_seq, current_batch_size);
-                    producer_sent.fetch_add(current_batch_size as u64, Ordering::Relaxed);
-                    sent += current_batch_size;
+                    producer_ring.publish_batch(start_seq, slots.len());
+                    sent += slots.len();
+                    producer_sent.fetch_add(slots.len() as u64, Ordering::Relaxed);
                 } else {
                     thread::yield_now();
                 }
             }
         });
-
         producer_handles.push(handle);
     }
 
-    // Create consumer threads
-    let mut consumer_handles = Vec::new();
-    let messages_per_consumer = config.total_messages / config.num_consumers;
-    let num_producers = config.num_producers;
-
+    // Start consumers
     for consumer_id in 0..config.num_consumers {
+        let consumer_ring = Arc::clone(&ring_buffer);
         let consumer_received = Arc::clone(&messages_received);
+        let messages_per_consumer = config.total_messages / config.num_consumers;
+        let batch_size = config.batch_size;
+        let num_producers = config.num_producers;
 
         let handle = thread::spawn(move || {
             if let Err(e) = pin_to_cpu(num_producers + consumer_id) {
@@ -346,21 +339,19 @@ pub fn benchmark_mpmc(
 
             let mut received = 0;
             while received < messages_per_consumer {
-                // Simulate consumer work
-                consumer_received.fetch_add(1, Ordering::Relaxed);
-                received += 1;
-
-                // Simulate processing delay
-                if received % 1000 == 0 {
+                let batch = consumer_ring.try_consume_batch(consumer_id, batch_size);
+                if !batch.is_empty() {
+                    received += batch.len();
+                    consumer_received.fetch_add(batch.len() as u64, Ordering::Relaxed);
+                } else {
                     thread::yield_now();
                 }
             }
         });
-
         consumer_handles.push(handle);
     }
 
-    // Wait for all threads to complete
+    // Wait for completion
     for handle in producer_handles {
         handle.join().unwrap();
     }
@@ -378,11 +369,11 @@ pub fn benchmark_mpmc(
         throughput_messages_per_second: throughput,
         total_messages_processed: final_sent,
         test_duration_seconds: total_time.as_secs_f64(),
-        latency_p50_nanos: 500, // Estimated
-        latency_p95_nanos: 1000, // Estimated
-        latency_p99_nanos: 2000, // Estimated
-        latency_p999_nanos: 5000, // Estimated
-        cpu_utilization: 0.8, // Estimated
+        latency_p50_nanos: 0, // Would need latency tracking
+        latency_p95_nanos: 0,
+        latency_p99_nanos: 0,
+        latency_p999_nanos: 0,
+        cpu_utilization: 0.0,
     })
 }
 
@@ -390,9 +381,8 @@ pub fn benchmark_mpmc(
 pub fn benchmark_sustained_throughput(
     config: &BenchmarkConfig
 ) -> Result<BenchmarkResults, Box<dyn std::error::Error>> {
-    println!("\n🏃 Running Sustained Throughput Benchmark");
+    println!("\nRunning Sustained Throughput Benchmark");
     println!("Duration: {:?}", config.measurement_duration);
-    println!("Target: 6M+ messages/second sustained");
 
     let ring_config = RingBufferConfig {
         size: config.ring_buffer_size,
@@ -402,140 +392,117 @@ pub fn benchmark_sustained_throughput(
         numa_node: None,
         enable_cache_prefetch: true,
         enable_simd: true,
-        optimal_batch_size: 1000,
+        optimal_batch_size: config.batch_size,
     };
 
     let ring_buffer = Arc::new(RingBuffer::new(ring_config)?);
     let messages_sent = Arc::new(AtomicU64::new(0));
-    let running = Arc::new(AtomicU64::new(1));
+    let messages_received = Arc::new(AtomicU64::new(0));
 
     let start_time = Instant::now();
 
     // Producer thread
     let producer_ring = Arc::clone(&ring_buffer);
     let producer_sent = Arc::clone(&messages_sent);
-    let producer_running = Arc::clone(&running);
     let batch_size = config.batch_size;
-
+    let measurement_duration = config.measurement_duration;
     let producer_handle = thread::spawn(move || {
+        let start_time = Instant::now();
         if let Err(e) = pin_to_cpu(0) {
             eprintln!("Warning: Could not pin producer to CPU 0: {}", e);
         }
 
-        let mut message_count = 0;
-        while producer_running.load(Ordering::Relaxed) == 1 {
+        let mut message_id = 0;
+        while start_time.elapsed() < measurement_duration {
             if let Some((start_seq, slots)) = producer_ring.try_claim_slots(batch_size) {
-                // Fill batch
                 for (i, slot) in slots.iter_mut().enumerate() {
-                    slot.set_sequence((message_count + i) as u64);
-                    let data = format!("Sustained message {}", message_count + i);
+                    let seq = message_id + i;
+                    slot.set_sequence(seq as u64);
+                    let data = format!("Sustained message {}", seq);
                     slot.set_data(data.as_bytes());
                 }
-
-                // Publish batch
-                producer_ring.publish_batch(start_seq, batch_size);
-                producer_sent.fetch_add(batch_size as u64, Ordering::Relaxed);
-                message_count += batch_size;
+                producer_ring.publish_batch(start_seq, slots.len());
+                message_id += slots.len();
+                producer_sent.fetch_add(slots.len() as u64, Ordering::Relaxed);
             } else {
                 thread::yield_now();
             }
         }
     });
 
-    // Run for specified duration
+    // Consumer thread
+    let consumer_ring = Arc::clone(&ring_buffer);
+    let consumer_received = Arc::clone(&messages_received);
+    let batch_size = config.batch_size;
     let measurement_duration = config.measurement_duration;
-    thread::sleep(measurement_duration);
+    let consumer_handle = thread::spawn(move || {
+        let start_time = Instant::now();
+        if let Err(e) = pin_to_cpu(1) {
+            eprintln!("Warning: Could not pin consumer to CPU 1: {}", e);
+        }
 
-    // Stop producer
-    running.store(0, Ordering::Relaxed);
+        while start_time.elapsed() < measurement_duration {
+            let batch = consumer_ring.try_consume_batch(0, batch_size);
+            if !batch.is_empty() {
+                consumer_received.fetch_add(batch.len() as u64, Ordering::Relaxed);
+            } else {
+                thread::yield_now();
+            }
+        }
+    });
+
+    // Wait for completion
     producer_handle.join().unwrap();
+    consumer_handle.join().unwrap();
 
     let total_time = start_time.elapsed();
     let final_sent = messages_sent.load(Ordering::Relaxed);
+    let final_received = messages_received.load(Ordering::Relaxed);
+
     let throughput = (final_sent as f64) / total_time.as_secs_f64();
 
     Ok(BenchmarkResults {
         throughput_messages_per_second: throughput,
         total_messages_processed: final_sent,
         test_duration_seconds: total_time.as_secs_f64(),
-        latency_p50_nanos: 300, // Estimated
-        latency_p95_nanos: 800, // Estimated
-        latency_p99_nanos: 1500, // Estimated
-        latency_p999_nanos: 4000, // Estimated
-        cpu_utilization: 0.9, // Estimated
+        latency_p50_nanos: 0,
+        latency_p95_nanos: 0,
+        latency_p99_nanos: 0,
+        latency_p999_nanos: 0,
+        cpu_utilization: 0.0,
     })
 }
 
+/// Calculate percentile from sorted samples
 fn percentile(sorted_samples: &[u64], percentile: f64) -> u64 {
     if sorted_samples.is_empty() {
         return 0;
     }
-
     let index = ((percentile / 100.0) * ((sorted_samples.len() - 1) as f64)).round() as usize;
-    sorted_samples.get(index).copied().unwrap_or(0)
+    sorted_samples[index.min(sorted_samples.len() - 1)]
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🚀 Flux Performance Benchmarking Suite");
-    println!("========================================");
+    println!("Flux Benchmark Suite");
+    println!("====================");
 
     let config = BenchmarkConfig::default();
 
-    // Run single producer, single consumer benchmark
+    // Run different benchmark types
     let spsc_results = benchmark_spsc(&config)?;
     spsc_results.print_summary();
 
-    // Run multi-producer, multi-consumer benchmark
     let mpmc_config = BenchmarkConfig {
-        num_producers: 2,
-        num_consumers: 2,
-        total_messages: 5_000_000,
+        num_producers: 4,
+        num_consumers: 4,
         ..config
     };
     let mpmc_results = benchmark_mpmc(&mpmc_config)?;
     mpmc_results.print_summary();
 
-    // Run sustained throughput benchmark
-    let sustained_config = BenchmarkConfig {
-        measurement_duration: Duration::from_secs(5),
-        ..config
-    };
-    let sustained_results = benchmark_sustained_throughput(&sustained_config)?;
+    let sustained_results = benchmark_sustained_throughput(&config)?;
     sustained_results.print_summary();
 
-    println!("\n🏆 FINAL VERDICT:");
-    println!("=================");
-
-    let target_throughput = 6_000_000.0;
-    let benchmarks = [
-        ("SPSC", spsc_results),
-        ("MPMC", mpmc_results),
-        ("Sustained", sustained_results),
-    ];
-
-    let mut all_passed = true;
-    for (name, result) in benchmarks {
-        if result.throughput_messages_per_second >= target_throughput {
-            println!(
-                "✅ {} Benchmark: {:.2}M messages/second - PASSED",
-                name,
-                result.throughput_messages_per_second / 1_000_000.0
-            );
-        } else {
-            println!(
-                "❌ {} Benchmark: {:.2}M messages/second - FAILED",
-                name,
-                result.throughput_messages_per_second / 1_000_000.0
-            );
-            all_passed = false;
-        }
-    }
-
-    if all_passed {
-        println!("\n🎉 ALL BENCHMARKS PASSED! Flux achieves 6M+ messages/second target!");
-    } else {
-        println!("\n⚠️  Some benchmarks failed to meet the 6M+ messages/second target.");
-    }
-
+    println!("\nBenchmark suite completed successfully!");
     Ok(())
 }

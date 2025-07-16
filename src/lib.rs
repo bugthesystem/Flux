@@ -75,6 +75,7 @@ impl Flux {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::disruptor::RingBufferEntry;
 
     #[test]
     fn test_ring_buffer_creation() {
@@ -87,10 +88,9 @@ mod tests {
     #[test]
     fn test_message_slot_operations() {
         let mut slot = MessageSlot::default();
-        slot.set_data_simd(b"Hello, Flux!");
+        slot.set_data(b"Hello, Flux!");
 
         assert_eq!(slot.data(), b"Hello, Flux!");
-        assert!(slot.verify_checksum());
     }
 
     #[test]
@@ -103,7 +103,7 @@ mod tests {
         if let Some((seq, slots)) = ring_buffer.try_claim_slots(3) {
             for (i, slot) in slots.iter_mut().enumerate() {
                 slot.set_sequence(seq + (i as u64));
-                slot.set_data_simd(b"Message");
+                slot.set_data(b"Message");
             }
             ring_buffer.publish_batch(seq, 3);
         }

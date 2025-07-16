@@ -81,53 +81,53 @@ inherits = "release"
 debug = true
 
 [[bench]]
-name = "flux_bench"
-path = "benches/flux_bench.rs"
+name = "bench_flux"
+path = "benches/bench_flux.rs"
 harness = false
 
 [[bench]]
-name = "simple_bench"
-path = "benches/simple_bench.rs"
+name = "bench_simple"
+path = "benches/bench_simple.rs"
 harness = false
 
 [[bin]]
-name = "extreme_bench"
-path = "benches/extreme_bench.rs"
+name = "bench_extreme"
+path = "benches/bench_extreme.rs"
 
 [[bin]]
-name = "macos_ultra_bench"
-path = "benches/macos_ultra_bench.rs"
+name = "bench_macos_ultra_optimized"
+path = "benches/bench_macos_ultra_optimized.rs"
 
 [[bin]]
-name = "profile_analysis"
-path = "benches/profile_analysis.rs"
+name = "bench_profile_analysis"
+path = "benches/bench_profile_analysis.rs"
 
 [[bin]]
-name = "ultra_performance_bench"
-path = "benches/ultra_performance_bench.rs"
+name = "bench_extreme_batching"
+path = "benches/bench_extreme_batching.rs"
 
 [[example]]
-name = "basic_usage"
-path = "examples/basic_usage.rs"
+name = "example_basic_usage"
+path = "examples/example_basic_usage.rs"
 
 [[example]]
-name = "udp_transport"
-path = "examples/udp_transport.rs"
+name = "example_udp_transport"
+path = "examples/example_udp_transport.rs"
 
 [[example]]
-name = "minimal_throughput_test"
-path = "examples/minimal_throughput_test.rs"
+name = "example_minimal_raw"
+path = "examples/example_minimal_raw.rs"
 
 [[example]]
-name = "realistic_high_throughput"
-path = "examples/realistic_high_throughput.rs"
+name = "example_realistic_validated"
+path = "examples/example_realistic_validated.rs"
 
 [[example]]
-name = "ultimate_throughput_test"
-path = "examples/ultimate_throughput_test.rs"
+name = "example_extreme_batching"
+path = "examples/example_extreme_batching.rs"
 
 [[example]]
-name = "linux_ultra_bench"
-path = "examples/linux_ultra_bench.rs"
+name = "example_linux_optimized"
+path = "examples/example_linux_optimized.rs"
 
  
