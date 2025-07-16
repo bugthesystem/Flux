@@ -1,0 +1,133 @@
+[package]
+name = "flux"
+version = "0.1.0"
+edition = "2021"
+authors = ["Bug the System <sarikayaziya@gmail.com>"]
+description = "High-performance message transport library implementing LMAX Disruptor patterns"
+license = "MIT OR Apache-2.0"
+keywords = ["high-performance", "messaging", "zero-copy", "disruptor"]
+categories = ["network-programming", "concurrency"]
+repository = "https://github.com/bugthesystem/flux"
+
+[dependencies]
+# Core async runtime and I/O
+monoio = { version = "0.2", optional = true }
+io-uring = { version = "0.7", optional = true }
+tokio = { version = "1.0", features = ["full"], optional = true }
+
+# Concurrency and data structures
+crossbeam = "0.8"
+parking_lot = "0.12"
+once_cell = "1.19"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+bincode = "2.0"
+
+# System level optimizations
+memmap2 = "0.9"
+nix = { version = "0.30", features = ["sched", "process"] }
+libc = "0.2"
+libnuma-sys = { version = "0.0.9", optional = true }
+
+# Monitoring and metrics
+hdrhistogram = "7.5"
+cpu-time = "1.0"
+sysinfo = "0.36"
+
+# Error handling and logging
+thiserror = "2.0.1"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Testing and benchmarking
+criterion = { version = "0.6", optional = true }
+proptest = { version = "1.0", optional = true }
+static_assertions = "1.1"
+num_cpus = "1.16"
+
+[dev-dependencies]
+criterion = { version = "0.6", features = ["html_reports"] }
+proptest = "1.0"
+tokio-test = "0.4"
+
+[features]
+default = ["std"]
+std = []
+tokio-runtime = ["tokio"]
+benchmarks = ["criterion"]
+property-tests = ["proptest"]
+io-uring = ["dep:monoio", "dep:io-uring"]
+skip_checksum_in_memory = []
+
+# Linux-specific optimizations
+linux_numa = ["dep:libnuma-sys"]
+linux_hugepages = []
+linux_affinity = []
+linux_io_uring = ["dep:monoio", "dep:io-uring"]
+linux_dpdk = []
+linux_optimized = ["linux_numa", "linux_hugepages", "linux_affinity", "linux_io_uring"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+overflow-checks = false
+strip = true
+
+[profile.bench]
+inherits = "release"
+debug = true
+
+[[bench]]
+name = "flux_bench"
+path = "benches/flux_bench.rs"
+harness = false
+
+[[bench]]
+name = "simple_bench"
+path = "benches/simple_bench.rs"
+harness = false
+
+[[bin]]
+name = "extreme_bench"
+path = "benches/extreme_bench.rs"
+
+[[bin]]
+name = "macos_ultra_bench"
+path = "benches/macos_ultra_bench.rs"
+
+[[bin]]
+name = "profile_analysis"
+path = "benches/profile_analysis.rs"
+
+[[bin]]
+name = "ultra_performance_bench"
+path = "benches/ultra_performance_bench.rs"
+
+[[example]]
+name = "basic_usage"
+path = "examples/basic_usage.rs"
+
+[[example]]
+name = "udp_transport"
+path = "examples/udp_transport.rs"
+
+[[example]]
+name = "minimal_throughput_test"
+path = "examples/minimal_throughput_test.rs"
+
+[[example]]
+name = "realistic_high_throughput"
+path = "examples/realistic_high_throughput.rs"
+
+[[example]]
+name = "ultimate_throughput_test"
+path = "examples/ultimate_throughput_test.rs"
+
+[[example]]
+name = "linux_ultra_bench"
+path = "examples/linux_ultra_bench.rs"
+
+ 
