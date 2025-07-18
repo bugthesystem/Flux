@@ -1,4 +1,4 @@
-# Sonic Technical Analysis: Path to Aeron/LMAX Disruptor Performance
+# Flux Technical Analysis: High-Performance Messaging Implementation
 
 ## 🔍 **CURRENT BOTTLENECKS ANALYSIS**
 

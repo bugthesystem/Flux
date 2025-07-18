@@ -142,7 +142,7 @@ fn main() {
         );
     } else if throughput_mps > 50_000_000.0 {
         println!(
-            "🚀 EXCELLENT: {:.0}M messages/second - AERON-LEVEL PERFORMANCE!",
+            "🚀 EXCELLENT: {:.0}M messages/second - INDUSTRY-LEVEL PERFORMANCE!",
             throughput_mps / 1_000_000.0
         );
     } else {

@@ -1,5 +1,5 @@
 //! Advanced performance optimizations for maximum throughput
-//! Target: Defeat Aeron and LMAX Disruptor performance
+//! Target: High-performance messaging comparable to industry standards
 
 pub mod advanced_simd;
 pub mod memory_pool;

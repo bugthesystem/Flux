@@ -1,5 +1,5 @@
 //! Zero-copy UDP transport with io_uring and kernel bypass
-//! Target: 5M+ messages/sec to defeat Aeron
+//! Target: 5M+ messages/sec performance
 
 use std::net::{ SocketAddr, UdpSocket };
 use std::sync::atomic::{ AtomicU64, Ordering };
@@ -496,17 +496,17 @@ pub fn benchmark_zero_copy_transport() -> Result<()> {
     println!("Throughput:        {:>12} msgs/sec", throughput);
     println!("Duration:          {:>12} ms", elapsed.as_millis());
 
-    println!("\n🏆 Aeron Comparison:");
-    println!("Aeron target:      6,000,000 msgs/sec");
-    println!("Our result:        {:>10} msgs/sec", throughput);
+    println!("\n📊 Performance Comparison:");
+    println!("Industry benchmark: 6,000,000 msgs/sec");
+    println!("Our result:         {:>10} msgs/sec", throughput);
 
     let ratio = (throughput as f64) / 6_000_000.0;
     if ratio >= 1.0 {
-        println!("🚀 AERON DEFEATED! Performance ratio: {:.2}x", ratio);
+        println!("🚀 EXCELLENT PERFORMANCE! Ratio: {:.2}x benchmark", ratio);
     } else if ratio >= 0.8 {
-        println!("🔥 CLOSE TO AERON! Performance ratio: {:.2}x", ratio);
+        println!("🔥 HIGH PERFORMANCE! Ratio: {:.2}x benchmark", ratio);
     } else {
-        println!("⚡ GOOD PROGRESS! Performance ratio: {:.2}x", ratio);
+        println!("⚡ GOOD PROGRESS! Ratio: {:.2}x benchmark", ratio);
     }
 
     transport.stop();

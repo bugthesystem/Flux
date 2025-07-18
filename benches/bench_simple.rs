@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         for i in 0..current_batch_size {
             let seq = messages_sent + i;
-            let data = format!("FLUX_MSG_{:010}_BEATING_AERON", seq);
+            let data = format!("FLUX_MSG_{:010}_HIGH_PERF", seq);
             let padded_data = format!("{:0width$}", data, width = message_size.min(1024));
             message_strings.push(padded_data);
         }
@@ -101,25 +101,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📊 Failed batches: {}", failed_batches);
     println!("📊 Average batch size: {:.1}", (messages_sent as f64) / (successful_batches as f64));
 
-    // Compare against Aeron
-    let aeron_baseline = 6_000_000.0;
-    let aeron_peak = 20_000_000.0;
+    // Compare against industry benchmarks
+    let industry_baseline = 6_000_000.0;
+    let industry_peak = 20_000_000.0;
 
-    println!("\n🥊 FLUX vs AERON COMPARISON");
-    println!("============================");
-    println!("🎯 Aeron baseline: {:.1} M messages/second", aeron_baseline / 1_000_000.0);
-    println!("🎯 Aeron peak: {:.1} M messages/second", aeron_peak / 1_000_000.0);
+    println!("\n📊 FLUX PERFORMANCE COMPARISON");
+    println!("==============================");
+    println!("🎯 Industry baseline: {:.1} M messages/second", industry_baseline / 1_000_000.0);
+    println!("🎯 Industry peak: {:.1} M messages/second", industry_peak / 1_000_000.0);
     println!("⚡ Flux result: {:.2} M messages/second", final_throughput / 1_000_000.0);
 
-    if final_throughput >= aeron_peak {
-        let advantage = (final_throughput / aeron_peak - 1.0) * 100.0;
-        println!("🏆 CRUSHING VICTORY! Flux beats Aeron peak by {:.1}%!", advantage);
+    if final_throughput >= industry_peak {
+        let advantage = (final_throughput / industry_peak - 1.0) * 100.0;
+        println!("🏆 EXCELLENT! Flux exceeds industry peak by {:.1}%!", advantage);
         println!("🚀 ACHIEVEMENT UNLOCKED: INDUSTRY-LEADING! 🚀");
-    } else if final_throughput >= aeron_baseline {
-        let advantage = (final_throughput / aeron_baseline - 1.0) * 100.0;
-        let peak_percent = (final_throughput / aeron_peak) * 100.0;
-        println!("🥇 VICTORY! Flux beats Aeron baseline by {:.1}%!", advantage);
-        println!("💪 Reaching {:.1}% of Aeron's peak performance!", peak_percent);
+    } else if final_throughput >= industry_baseline {
+        let advantage = (final_throughput / industry_baseline - 1.0) * 100.0;
+        let peak_percent = (final_throughput / industry_peak) * 100.0;
+        println!("🥇 SUCCESS! Flux exceeds industry baseline by {:.1}%!", advantage);
+        println!("💪 Reaching {:.1}% of industry peak performance!", peak_percent);
 
         if peak_percent >= 90.0 {
             println!("🔥 ULTRA-HIGH PERFORMANCE TIER!");
@@ -129,8 +129,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("✅ SOLID PERFORMANCE TIER!");
         }
     } else {
-        let percent_of_baseline = (final_throughput / aeron_baseline) * 100.0;
-        println!("⚠️  Below Aeron baseline ({:.1}% of target)", percent_of_baseline);
+        let percent_of_baseline = (final_throughput / industry_baseline) * 100.0;
+        println!("⚠️  Below industry baseline ({:.1}% of target)", percent_of_baseline);
 
         if percent_of_baseline >= 50.0 {
             println!("📈 Good foundation - optimization needed");
@@ -154,6 +154,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n🔧 TIER: NEEDS OPTIMIZATION");
     }
 
-    println!("\n🎉 Benchmark complete! Ready to take on Aeron! 🎉");
+    println!("\n🎉 Benchmark complete! High-performance messaging system ready! 🎉");
     Ok(())
 }
