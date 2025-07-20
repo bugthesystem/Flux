@@ -8,6 +8,7 @@ Flux is a high-performance message transport library (IPC, UDP, Reliable UDP) fo
 > Optimizations still in progress, the readme will be updated as progress is made
 > 
 >  Known issues atm:
+> - /docs/architecture.md needs to be updated to reflect, code blocks are outdated
 > - better alignment (64, 128, depending on CPUs) to fully prevent false-sharing
 > - cover resilience concerns 
 > - review safety concerns (`unsafe` in use there and there)
