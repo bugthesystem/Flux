@@ -5,6 +5,13 @@
 
 Flux is a high-performance message transport library (IPC, UDP, Reliable UDP) for Rust, implementing LMAX Disruptor patterns with zero-copy memory management and lock-free operations.
 
+> Optimizations still in progress, the readme will be updated as progress is made
+> 
+>  Known issues atm:
+> - better alignment (64, 128, depending on CPUs) to fully prevent false-sharing
+> - cover resilience concerns 
+> - review safety concerns (`unsafe` in use there and there)
+
 ## Architecture
 
 ```
@@ -69,7 +76,7 @@ if let Some((seq, slots)) = buffer.try_claim_slots(10) {
     buffer.publish_batch(seq, slots.len());
 }
 
-// Consumer: read a batch
+// Consumer: read a batch,
 let messages = buffer.try_consume_batch(0, 10);
 for message in messages {
     println!("Received: {:?}", message.data());
