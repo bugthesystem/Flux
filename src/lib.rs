@@ -12,7 +12,13 @@ pub mod utils;
 // Re-export main components
 pub use disruptor::{ RingBuffer, RingBufferConfig, MessageSlot, WaitStrategyType };
 pub use error::{ Result, FluxError };
-pub use transport::{ ReliableUdpTransport, TransportConfig, TransportMetrics };
+pub use transport::{
+    ReliableUdpTransport,
+    BasicUdpTransport,
+    BasicUdpConfig,
+    TransportConfig,
+    TransportMetrics,
+};
 pub use optimizations::{ OptimizationManager, OptimizationConfig };
 
 /// Version information

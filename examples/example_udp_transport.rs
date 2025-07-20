@@ -1,4 +1,4 @@
-use flux::{ RingBuffer, FluxError };
+use flux::{ RingBuffer, FluxError, BasicUdpTransport, BasicUdpConfig };
 use flux::disruptor::{ RingBufferConfig, WaitStrategyType };
 use std::net::{ UdpSocket, SocketAddr };
 use std::thread;
@@ -44,16 +44,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn run_server(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Flux UDP Server on {}", addr);
 
-    // Create ring buffer for incoming messages
-    let config = RingBufferConfig::new(4096)
-        .unwrap()
-        .with_wait_strategy(WaitStrategyType::BusySpin);
-    let buffer = RingBuffer::new(config)?;
-    // Use buffer directly for message operations
-
-    // Create UDP socket
-    let socket = UdpSocket::bind(addr)?;
-    socket.set_read_timeout(Some(Duration::from_millis(100)))?;
+    // Create basic UDP transport
+    let config = BasicUdpConfig {
+        local_addr: addr.to_string(),
+        buffer_size: 4096,
+        batch_size: 64,
+        non_blocking: false, // Use blocking for server
+        socket_timeout_ms: 100,
+    };
+    let mut transport = BasicUdpTransport::new(config)?;
+    transport.start()?;
 
     println!("Server listening on {}", addr);
 
@@ -62,33 +62,25 @@ fn run_server(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
 
     loop {
-        let mut buf = [0u8; 1024];
-
-        match socket.recv_from(&mut buf) {
-            Ok((size, client_addr)) => {
-                let message = String::from_utf8_lossy(&buf[..size]);
+        match transport.receive()? {
+            Some((data, client_addr)) => {
+                let message = String::from_utf8_lossy(&data);
                 message_count += 1;
 
                 println!("Received[{}]: {} (from {})", message_count, message.trim(), client_addr);
 
                 // Echo the message back
                 let response = format!("Echo: {}", message.trim());
-                if let Err(e) = socket.send_to(response.as_bytes(), client_addr) {
-                    eprintln!("Failed to send response: {}", e);
-                }
+                transport.send(response.as_bytes(), client_addr)?;
 
                 // Check if we received the end signal
                 if message.trim() == "END" {
                     break;
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                // Timeout - continue listening
+            None => {
+                // No message received, continue
                 continue;
-            }
-            Err(e) => {
-                eprintln!("Server receive error: {}", e);
-                break;
             }
         }
     }
@@ -107,16 +99,16 @@ fn run_server(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
 fn run_client(local_addr: &str, server_addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Flux UDP Client");
 
-    // Create ring buffer for outgoing messages
-    let config = RingBufferConfig::new(4096)
-        .unwrap()
-        .with_wait_strategy(WaitStrategyType::BusySpin);
-    let buffer = RingBuffer::new(config)?;
-    // let mut producer = buffer.create_producer(); // Remove if not needed
-
-    // Create UDP socket
-    let socket = UdpSocket::bind(local_addr)?;
-    socket.set_read_timeout(Some(Duration::from_millis(100)))?;
+    // Create basic UDP transport
+    let config = BasicUdpConfig {
+        local_addr: local_addr.to_string(),
+        buffer_size: 4096,
+        batch_size: 64,
+        non_blocking: false, // Use blocking for client
+        socket_timeout_ms: 100,
+    };
+    let mut transport = BasicUdpTransport::new(config)?;
+    transport.start()?;
 
     let server_addr: SocketAddr = server_addr.parse()?;
 
@@ -130,33 +122,24 @@ fn run_client(local_addr: &str, server_addr: &str) -> Result<(), Box<dyn std::er
         let message = format!("Message {}: Hello from Flux client!", i);
 
         // Send message
-        if let Err(e) = socket.send_to(message.as_bytes(), server_addr) {
-            eprintln!("Failed to send message {}: {}", i, e);
-            continue;
-        }
+        transport.send(message.as_bytes(), server_addr)?;
 
         // Wait for response
-        let mut buf = [0u8; 1024];
-        match socket.recv_from(&mut buf) {
-            Ok((size, _)) => {
-                let response = String::from_utf8_lossy(&buf[..size]);
+        match transport.receive()? {
+            Some((data, _)) => {
+                let response = String::from_utf8_lossy(&data);
                 if i < 5 || i % 100 == 0 {
                     println!("Response[{}]: {}", i, response.trim());
                 }
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            None => {
                 println!("Timeout waiting for response {}", i);
-            }
-            Err(e) => {
-                eprintln!("Client receive error: {}", e);
             }
         }
     }
 
     // Send end signal
-    if let Err(e) = socket.send_to(b"END", server_addr) {
-        eprintln!("Failed to send END signal: {}", e);
-    }
+    transport.send(b"END", server_addr)?;
 
     let duration = start_time.elapsed();
     let throughput = (messages_to_send as f64) / duration.as_secs_f64();
@@ -169,68 +152,20 @@ fn run_client(local_addr: &str, server_addr: &str) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-/// High-performance UDP transport using Flux
-struct FluxUdpTransport {
-    socket: UdpSocket,
-    send_buffer: RingBuffer,
-    recv_buffer: RingBuffer,
-}
-
-impl FluxUdpTransport {
-    fn new(local_addr: &str, buffer_size: usize) -> Result<Self, Box<dyn std::error::Error>> {
-        let socket = UdpSocket::bind(local_addr)?;
-        socket.set_nonblocking(true)?;
-
-        let config = RingBufferConfig::new(buffer_size)
-            .unwrap()
-            .with_wait_strategy(WaitStrategyType::BusySpin);
-        Ok(FluxUdpTransport {
-            socket,
-            send_buffer: RingBuffer::new(config.clone())?,
-            recv_buffer: RingBuffer::new(config)?,
-        })
-    }
-
-    fn send_message(
-        &mut self,
-        data: &[u8],
-        addr: SocketAddr
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        // In a real implementation, this would use zero-copy operations
-        // with the ring buffer to queue messages for sending
-        self.socket.send_to(data, addr)?;
-        Ok(())
-    }
-
-    fn receive_message(
-        &mut self
-    ) -> Result<Option<(Vec<u8>, SocketAddr)>, Box<dyn std::error::Error>> {
-        let mut buf = [0u8; 1024];
-
-        match self.socket.recv_from(&mut buf) {
-            Ok((size, addr)) => {
-                let data = buf[..size].to_vec();
-                Ok(Some((data, addr)))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => { Ok(None) }
-            Err(e) => { Err(Box::new(e)) }
-        }
-    }
-
-    fn start_background_processing(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // Start background threads for send/receive processing
-        // This would use the ring buffers for high-performance message handling
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_udp_transport_creation() {
-        let transport = FluxUdpTransport::new("127.0.0.1:0", 1024);
+    fn test_basic_udp_transport_creation() {
+        let config = BasicUdpConfig {
+            local_addr: "127.0.0.1:0".to_string(),
+            buffer_size: 1024,
+            batch_size: 32,
+            non_blocking: true,
+            socket_timeout_ms: 50,
+        };
+        let transport = BasicUdpTransport::new(config);
         assert!(transport.is_ok());
     }
 

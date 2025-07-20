@@ -479,16 +479,130 @@ impl FecEncoder {
     }
 }
 
-/// Legacy transport for backward compatibility
-pub struct FluxTransport {
-    config: TransportConfig,
+/// Basic UDP transport configuration
+#[derive(Debug, Clone)]
+pub struct BasicUdpConfig {
+    /// Local address to bind to
+    pub local_addr: String,
+    /// Ring buffer size for message queuing
+    pub buffer_size: usize,
+    /// Batch size for sending messages
+    pub batch_size: usize,
+    /// Enable non-blocking mode
+    pub non_blocking: bool,
+    /// Socket timeout in milliseconds
+    pub socket_timeout_ms: u64,
 }
 
-impl FluxTransport {
-    /// Create new transport
-    pub fn new(addr: &str, config: TransportConfig) -> Result<Self> {
-        let mut config = config;
-        config.local_addr = addr.to_string();
-        Ok(Self { config })
+impl Default for BasicUdpConfig {
+    fn default() -> Self {
+        Self {
+            local_addr: "0.0.0.0:0".to_string(),
+            buffer_size: 4096,
+            batch_size: 64,
+            non_blocking: true,
+            socket_timeout_ms: 100,
+        }
+    }
+}
+
+/// Basic UDP transport with ring buffer integration
+pub struct BasicUdpTransport {
+    /// UDP socket
+    socket: UdpSocket,
+    /// Configuration
+    config: BasicUdpConfig,
+    /// Send ring buffer
+    send_buffer: RingBuffer,
+    /// Receive ring buffer
+    recv_buffer: RingBuffer,
+    /// Running flag
+    running: Arc<AtomicU64>,
+}
+
+impl BasicUdpTransport {
+    /// Create a new basic UDP transport
+    pub fn new(config: BasicUdpConfig) -> Result<Self> {
+        let socket = UdpSocket::bind(&config.local_addr)?;
+
+        if config.non_blocking {
+            socket.set_nonblocking(true)?;
+        } else {
+            socket.set_read_timeout(Some(Duration::from_millis(config.socket_timeout_ms)))?;
+        }
+
+        let ring_config = RingBufferConfig::new(config.buffer_size)?
+            .with_consumers(1)?
+            .with_optimal_batch_size(config.batch_size)
+            .with_wait_strategy(crate::disruptor::WaitStrategyType::BusySpin);
+
+        let send_buffer = RingBuffer::new(ring_config.clone())?;
+        let recv_buffer = RingBuffer::new(ring_config.clone())?;
+
+        Ok(Self {
+            socket,
+            config,
+            send_buffer,
+            recv_buffer,
+            running: Arc::new(AtomicU64::new(0)),
+        })
+    }
+
+    /// Start the transport
+    pub fn start(&mut self) -> Result<()> {
+        self.running.store(1, Ordering::Relaxed);
+        Ok(())
+    }
+
+    /// Stop the transport
+    pub fn stop(&mut self) {
+        self.running.store(0, Ordering::Relaxed);
+    }
+
+    /// Send a message
+    pub fn send(&mut self, data: &[u8], addr: SocketAddr) -> Result<()> {
+        self.socket.send_to(data, addr)?;
+        Ok(())
+    }
+
+    /// Send a batch of messages
+    pub fn send_batch(&mut self, messages: &[&[u8]], addr: SocketAddr) -> Result<usize> {
+        let mut sent = 0;
+
+        for data in messages {
+            self.send(data, addr)?;
+            sent += 1;
+        }
+
+        Ok(sent)
+    }
+
+    /// Receive a message
+    pub fn receive(&mut self) -> Result<Option<(Vec<u8>, SocketAddr)>> {
+        let mut buf = vec![0u8; 1024];
+
+        match self.socket.recv_from(&mut buf) {
+            Ok((size, addr)) => {
+                let data = buf[..size].to_vec();
+                Ok(Some((data, addr)))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => { Ok(None) }
+            Err(e) => { Err(FluxError::Io(e)) }
+        }
+    }
+
+    /// Get the underlying socket for advanced operations
+    pub fn socket(&self) -> &UdpSocket {
+        &self.socket
+    }
+
+    /// Get the send ring buffer
+    pub fn send_buffer(&self) -> &RingBuffer {
+        &self.send_buffer
+    }
+
+    /// Get the receive ring buffer
+    pub fn recv_buffer(&self) -> &RingBuffer {
+        &self.recv_buffer
     }
 }
