@@ -139,10 +139,10 @@ done
 numactl --hardware
 
 # Run Flux with NUMA awareness
-numactl --cpunodebind=0 --membind=0 cargo run --release --bin extreme_bench
+numactl --cpunodebind=0 --membind=0 cargo run --release --bin bench_extreme
 
 # For multi-node setups
-numactl --interleave=all cargo run --release --bin extreme_bench
+numactl --interleave=all cargo run --release --bin bench_extreme
 ```
 
 ### 🔧 Real-Time Scheduling
@@ -158,7 +158,7 @@ username soft memlock unlimited
 username hard memlock unlimited
 
 # Set process priority
-sudo chrt -f 50 cargo run --release --bin extreme_bench
+sudo chrt -f 50 cargo run --release --bin bench_extreme
 ```
 
 ### 📊 Performance Monitoring
@@ -174,7 +174,7 @@ htop
 nethogs
 
 # Profile with perf
-perf record -g cargo run --release --bin extreme_bench
+perf record -g cargo run --release --bin bench_extreme
 perf report
 
 # Monitor cache misses
@@ -183,32 +183,13 @@ perf stat -e cache-misses,cache-references cargo run --release
 
 ## 🍎 macOS Setup
 
-macOS provides good performance with some limitations compared to Linux.
+> **📖 For comprehensive macOS optimization guidance, see [macOS Optimizations](macos_optimizations.md)**
 
-### 🔧 System Requirements
-
-```bash
-# Minimum requirements
-macOS: 10.15 (Catalina) or later
-CPU: Intel i5/i7 or Apple Silicon M1/M2
-RAM: 8GB minimum, 16GB+ recommended
-Xcode: Command Line Tools installed
-
-# Recommended
-macOS: 12.0+ (Monterey)
-CPU: Apple M1 Pro/Max or Intel i7/i9
-RAM: 32GB+ unified memory (Apple Silicon) or DDR4
-Storage: SSD with 1GB+ free space
-```
-
-### 📦 Installation
+### Quick Installation
 
 ```bash
 # Install Xcode Command Line Tools
 xcode-select --install
-
-# Install Homebrew
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 # Install Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -218,232 +199,20 @@ source ~/.cargo/env
 cargo install flux
 ```
 
-### ⚡ Performance Optimizations
-
-#### 1. System Settings
-
-```bash
-# Disable System Integrity Protection (for advanced users only)
-# This is required for some performance optimizations
-# Boot into Recovery Mode and run:
-# csrutil disable
-
-# Increase file descriptor limits
-sudo nano /etc/sysctl.conf
-```
-
-Add:
-```bash
-kern.maxfiles=65536
-kern.maxfilesperproc=65536
-```
-
-#### 2. Memory and CPU Optimizations
-
-```bash
-# Create launch daemon for performance
-sudo nano /Library/LaunchDaemons/com.flux.performance.plist
-```
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" 
-    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.flux.performance</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/sbin/sysctl</string>
-        <string>-w</string>
-        <string>kern.tcsm_available=1</string>
-    </array>
-    <key>RunAtLoad</key>
-    <true/>
-</dict>
-</plist>
-```
-
-Load the daemon:
-```bash
-sudo launchctl load /Library/LaunchDaemons/com.flux.performance.plist
-```
-
-#### 3. Thread Affinity (Limited on macOS)
-
-```bash
-# macOS has limited thread affinity support
-# Use thread_policy_set() in your application instead
-```
-
-### 🧮 Apple Silicon Optimizations
-
-```bash
-# For Apple Silicon (M1/M2) processors
-export CARGO_TARGET_AARCH64_APPLE_DARWIN_RUSTFLAGS="-C target-cpu=apple-m1"
-
-# Build with optimizations
-cargo build --release --target aarch64-apple-darwin
-
-# Use Rosetta for x86_64 compatibility if needed
-arch -x86_64 cargo run --release
-```
-
-### 📊 Performance Monitoring
-
-```bash
-# Install monitoring tools
-brew install htop
-brew install activity-monitor
-
-# Monitor system performance
-sudo powermetrics --samplers smc,cpu_power,gpu_power -n 1 -i 1000
-
-# Use Activity Monitor for detailed analysis
-open -a "Activity Monitor"
-
-# Profile with Instruments
-instruments -t "Time Profiler" cargo run --release --bin extreme_bench
-```
-
-## 🏆 Platform Comparison
-
 ### Performance Characteristics
 
 | Feature | Linux | macOS |
 |---------|-------|-------|
 | **Peak Performance** | 30M+ msgs/sec | 25M+ msgs/sec |
-| **Latency** | Sub-microsecond | 1-2 microseconds |
-| **CPU Isolation** | Full support | Limited |
-| **NUMA Support** | Full support | N/A |
-| **Real-time Scheduling** | Full support | Limited |
-| **Huge Pages** | Supported | Not available |
-| **IRQ Affinity** | Supported | Not available |
+| **Thread Affinity** | Full support | Apple Silicon: ❌, Intel: Limited |
+| **NUMA Support** | Full support | N/A (unified memory) |
+| **Real-time Scheduling** | Full support | QoS classes only |
 
-### Recommended Use Cases
-
-#### Linux
-- **Production deployments**
-- **High-frequency trading**
-- **Maximum performance requirements**
-- **Multi-socket systems**
-- **Network-intensive applications**
-
-#### macOS
-- **Development and testing**
-- **Proof-of-concept applications**
-- **Single-node deployments**
-- **Apple Silicon optimization**
-
-## 🚀 Quick Start Scripts
-
-### Linux Quick Setup
-
-```bash
-#!/bin/bash
-# linux-flux-setup.sh
-
-set -e
-
-echo "🐧 Setting up Flux for Linux..."
-
-# Install dependencies
-sudo apt update
-sudo apt install -y build-essential pkg-config libssl-dev libnuma-dev
-
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source ~/.cargo/env
-
-# Clone and build Flux
-git clone https://github.com/your-org/flux.git
-cd flux
-cargo build --release
-
-# Configure system
-sudo sysctl -w vm.nr_hugepages=1024
-sudo sysctl -w net.core.rmem_max=268435456
-sudo sysctl -w net.core.wmem_max=268435456
-
-# Run benchmark
-cargo run --release --bin extreme_bench
-
-echo "✅ Linux setup complete!"
-```
-
-### macOS Quick Setup
-
-```bash
-#!/bin/bash
-# macos-flux-setup.sh
-
-set -e
-
-echo "🍎 Setting up Flux for macOS..."
-
-# Install Xcode CLI tools
-xcode-select --install 2>/dev/null || true
-
-# Install Homebrew if not present
-if ! command -v brew &> /dev/null; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-fi
-
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source ~/.cargo/env
-
-# Clone and build Flux
-git clone https://github.com/your-org/flux.git
-cd flux
-cargo build --release
-
-# Run benchmark
-cargo run --release --bin extreme_bench
-
-echo "✅ macOS setup complete!"
-```
-
-## 🔧 Troubleshooting
-
-### Common Linux Issues
-
-#### Permission Denied for Huge Pages
-```bash
-# Solution: Add user to appropriate groups
-sudo usermod -a -G adm,dialout,cdrom,plugdev,lpadmin,admin,sambashare $USER
-
-# Or run with sudo
-sudo cargo run --release --bin extreme_bench
-```
-
-#### Network Interface Issues
-```bash
-# Check available interfaces
-ip link show
-
-# Verify IRQ assignments
-cat /proc/interrupts | grep eth0
-```
-
-### Common macOS Issues
-
-#### Xcode Command Line Tools
-```bash
-# Reinstall if needed
-sudo xcode-select --reset
-xcode-select --install
-```
-
-#### Apple Silicon Compatibility
-```bash
-# Use Rosetta for x86_64 binaries
-arch -x86_64 cargo run --release
-
-# Or build natively
-cargo build --release --target aarch64-apple-darwin
-```
+**📋 Use Cases:**
+- ✅ **Development and testing**
+- ✅ **Single-node deployments** 
+- ✅ **Apple Silicon optimization**
+- ❌ **Production high-frequency trading** (use Linux)
 
 ## 🎯 Platform-Specific Optimizations
 
@@ -457,7 +226,7 @@ echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governo
 sudo cpupower idle-set -D 0
 
 # Set CPU affinity for maximum performance
-taskset -c 2-7 cargo run --release --bin extreme_bench
+taskset -c 2-7 cargo run --release --bin bench_extreme
 ```
 
 ### macOS Advanced Tuning
@@ -480,10 +249,10 @@ sudo sysctl -w net.inet.raw.maxdgram=65536
 sudo numactl --cpunodebind=0 --membind=0 \
   taskset -c 2-7 \
   chrt -f 50 \
-  cargo run --release --bin extreme_bench
+  cargo run --release --bin bench_extreme
 
 # macOS - Optimized run
-cargo run --release --bin extreme_bench
+cargo run --release --bin bench_extreme
 ```
 
 ### Expected Performance

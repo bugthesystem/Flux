@@ -1,4 +1,4 @@
-//! LMAX Disruptor-style zero-copy ring buffer implementation
+//! LMAX Disruptor-style high-performance ring buffer implementation
 //!
 //! This module provides a high-performance, lock-free ring buffer implementation
 //! based on the LMAX Disruptor pattern, optimized for mechanical sympathy with
@@ -6,7 +6,7 @@
 //!
 //! ## Key Features
 //!
-//! - **Zero-Copy**: Pre-allocated contiguous memory buffer
+//! - **Pre-allocated Buffers**: Contiguous memory layout for performance
 //! - **Lock-Free**: Single-writer, multiple-reader without locks
 //! - **Cache-Friendly**: Cache-line aligned with false sharing prevention
 //! - **Batching**: Efficient batch operations for higher throughput

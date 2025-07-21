@@ -22,10 +22,16 @@ pub mod macos_optimizations;
 pub mod linux_numa;
 
 #[cfg(target_arch = "aarch64")]
-pub mod neon_simd;
+// NEON SIMD functionality moved to optimizations/advanced_simd.rs
 
 // Re-export commonly used utilities
-pub use cpu_simple::{ set_cpu_affinity, get_cpu_count, pin_to_cpu };
+pub use cpu_simple::{
+    set_cpu_affinity,
+    get_cpu_count,
+    pin_to_cpu,
+    is_thread_affinity_supported,
+    get_thread_affinity_info,
+};
 pub use memory::{ allocate_aligned, allocate_huge_pages, lock_memory };
 pub use time::{ get_nanos, get_tsc, TimestampProvider };
 pub use checksum::{ xxhash32, xxhash64, crc32 };
@@ -45,7 +51,6 @@ pub use linux_numa::{
     lock_memory as linux_lock_memory,
     allocate_huge_pages as linux_allocate_huge_pages,
 };
-
 
 /// System page size
 pub const PAGE_SIZE: usize = 4096;

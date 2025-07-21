@@ -7,7 +7,7 @@ use flux::disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType, RingBuffe
 fn main() {
     println!("🚀 ULTRA PERFORMANCE BENCHMARK");
     println!("================================");
-    println!("🎯 Target: 100M+ messages/second");
+    println!("🎯 Target: 20M+ messages/second");
     println!("");
 
     // Ultra-optimized configuration
@@ -16,7 +16,7 @@ fn main() {
         .with_consumers(8) // 8 consumers for parallel processing
         .unwrap()
         .with_wait_strategy(WaitStrategyType::BusySpin)
-        .with_optimal_batch_size(65536) // 64K batch size for maximum throughput
+        .with_optimal_batch_size(1000) // Realistic batch size
         .with_cache_prefetch(true)
         .with_simd_optimizations(true);
 
@@ -45,8 +45,9 @@ fn main() {
         let test_data = vec![0x42u8; 64];
         while producer_running.load(Ordering::Relaxed) == 1 {
             if let Ok(mut buffer) = producer_buffer.try_lock() {
-                if let Some((seq, slots)) = buffer.try_claim_slots_ultra(65536) {
+                if let Some((seq, slots)) = buffer.try_claim_slots_ultra(1000) {
                     batch_count += 1;
+                    let actual_count = slots.len();
                     for (i, slot) in slots.iter_mut().enumerate() {
                         slot.set_sequence(seq + (i as u64));
                         slot.set_data(&test_data);
@@ -54,9 +55,9 @@ fn main() {
                     // Release the mutable borrow before calling publish_batch_ultra
                     drop(buffer);
                     // Re-acquire the lock for publishing
-                    if let Ok(mut buffer) = producer_buffer.try_lock() {
-                        buffer.publish_batch_ultra(seq, 65536);
-                        producer_sent.fetch_add(65536 as u64, Ordering::Relaxed);
+                    if let Ok(buffer) = producer_buffer.try_lock() {
+                        buffer.publish_batch_ultra(seq, actual_count);
+                        producer_sent.fetch_add(actual_count as u64, Ordering::Relaxed);
                     }
                 }
             } else {
@@ -80,7 +81,7 @@ fn main() {
             let mut batches_processed = 0;
             while consumer_running.load(Ordering::Relaxed) == 1 {
                 if let Ok(buffer) = consumer_buffer.try_lock() {
-                    let batch = buffer.try_consume_batch_ultra(consumer_id, 65536);
+                    let batch = buffer.try_consume_batch_ultra(consumer_id, 1000);
                     if !batch.is_empty() {
                         batches_processed += 1;
                         messages_processed += batch.len();
@@ -127,39 +128,30 @@ fn main() {
     let messages_per_second = (total_messages as f64) / duration.as_secs_f64();
 
     println!("");
-    println!("🏆 ULTRA PERFORMANCE RESULTS");
-    println!("============================");
-    println!("📊 Total Messages: {}", total_messages);
-    println!("📊 Duration: {:.3} seconds", duration.as_secs_f64());
-    println!("📊 Throughput: {:.2} M messages/second", messages_per_second / 1_000_000.0);
-    println!("📊 Messages/Core: {:.2} M/sec", messages_per_second / 1_000_000.0 / 8.0);
-    println!("");
+    println!("📊 Benchmark Results");
+    println!("====================");
+    println!("Total Messages: {}", total_messages);
+    println!("Duration: {:.3} seconds", duration.as_secs_f64());
+    println!("Throughput: {:.0} msgs/second", messages_per_second);
+    println!("Per-core throughput: {:.0} msgs/sec", messages_per_second / 8.0);
+    println!();
 
-    if messages_per_second > 100_000_000.0 {
-        println!("🎉 ULTRA PERFORMANCE ACHIEVED!");
-        println!("✅ Exceeded 100M messages/second target");
-        println!("🚀 Flux is ready for extreme workloads!");
-    } else if messages_per_second > 50_000_000.0 {
-        println!("🔥 EXCELLENT PERFORMANCE!");
-        println!("✅ Achieved 50M+ messages/second");
-        println!("💡 Room for further optimization");
-    } else if messages_per_second > 10_000_000.0 {
-        println!("⚡ GOOD PERFORMANCE!");
-        println!("✅ Achieved 10M+ messages/second");
-        println!("🔧 Consider system-level tuning");
+    if messages_per_second > 10_000_000.0 {
+        println!("✅ Good performance achieved");
+    } else if messages_per_second > 1_000_000.0 {
+        println!("⚠️ Moderate performance");
+        println!("Consider system-level tuning for better results");
     } else {
-        println!("⚠️  PERFORMANCE OPTIMIZATION NEEDED");
-        println!("📈 Current: {:.2} M messages/second", messages_per_second / 1_000_000.0);
-        println!("🎯 Target: 100M+ messages/second");
+        println!("❌ Performance below expectations");
+        println!("Check system configuration and CPU load");
     }
 
-    println!("");
-    println!("🔧 Performance Tips:");
+    println!();
+    println!("Performance optimization tips:");
     println!("• Use CPU isolation: isolcpus=0,1,2,3,4,5,6,7");
     println!("• Set CPU governor to performance mode");
-    println!("• Disable CPU frequency scaling");
     println!("• Use huge pages for memory allocation");
-    println!("• Run with real-time priority");
-    println!("");
-    println!("🚀 Flux Ultra Performance Benchmark Complete!");
+    println!("• Run with elevated priority");
+    println!();
+    println!("Benchmark completed.");
 }

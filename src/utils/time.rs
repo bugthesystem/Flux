@@ -3,7 +3,6 @@
 use std::time::{ SystemTime, UNIX_EPOCH, Duration, Instant };
 use std::sync::atomic::{ AtomicU64, Ordering };
 
-
 /// Get current time in nanoseconds since Unix epoch
 pub fn get_nanos() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos() as u64
@@ -145,7 +144,17 @@ impl TscTimeProvider {
     pub fn calibrate(&self) {
         let system_time = get_nanos();
         let tsc_time = get_tsc();
-        let tsc_nanos = (tsc_time * 1_000_000_000) / self.tsc_frequency;
+
+        // Use checked arithmetic to prevent overflow
+        let tsc_nanos = if let Some(product) = tsc_time.checked_mul(1_000_000_000) {
+            product / self.tsc_frequency
+        } else {
+            // Handle overflow by using 128-bit arithmetic
+            let tsc_time_128 = tsc_time as u128;
+            let freq_128 = self.tsc_frequency as u128;
+            ((tsc_time_128 * 1_000_000_000) / freq_128) as u64
+        };
+
         let offset = system_time.saturating_sub(tsc_nanos);
         self.offset.store(offset, Ordering::Release);
     }
@@ -159,7 +168,17 @@ impl TscTimeProvider {
 impl TimestampProvider for TscTimeProvider {
     fn now_nanos(&self) -> u64 {
         let tsc = get_tsc();
-        let tsc_nanos = (tsc * 1_000_000_000) / self.tsc_frequency;
+
+        // Use checked arithmetic to prevent overflow
+        let tsc_nanos = if let Some(product) = tsc.checked_mul(1_000_000_000) {
+            product / self.tsc_frequency
+        } else {
+            // Handle overflow by using 128-bit arithmetic
+            let tsc_128 = tsc as u128;
+            let freq_128 = self.tsc_frequency as u128;
+            ((tsc_128 * 1_000_000_000) / freq_128) as u64
+        };
+
         let offset = self.offset.load(Ordering::Acquire);
         tsc_nanos + offset
     }
@@ -342,7 +361,8 @@ mod tests {
         let mono_time = monotonic_provider.now_nanos();
 
         assert!(sys_time > 0);
-        assert!(mono_time >= 0);
+        // Monotonic time validation (always >= 0)
+        let _ = mono_time;
     }
 
     #[test]

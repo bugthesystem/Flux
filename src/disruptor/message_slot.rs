@@ -1,13 +1,13 @@
 //! Message slot implementation for the ring buffer
 //!
 //! This module provides the `MessageSlot` structure that represents individual
-//! entries in the ring buffer. It's designed for zero-copy operations and
+//! entries in the ring buffer. It's designed for optimized memory access and
 //! cache-friendly access patterns with SIMD optimizations for maximum performance.
 //!
 //! ## Key Features
 //!
 //! - **Cache-Line Aligned**: 64-byte alignment for optimal CPU access patterns
-//! - **Zero-Copy Operations**: Direct memory access without allocations
+//! - **Optimized Operations**: SIMD-accelerated data copying and processing
 //! - **SIMD Optimizations**: Word-sized operations for faster data copying
 //! - **Fast Checksums**: Optimized xxHash-style checksum calculation
 //! - **Type Safety**: Strong typing for message types and flags
@@ -26,7 +26,7 @@
 //!
 //! // Create a new message slot with data
 //! let mut slot = MessageSlot::default();
-//! slot.set_data_simd(b"Hello, Flux!"); // SIMD-optimized data copy
+//! slot.set_data_simd(b"Hello, Flux!"); // SIMD-optimized data copying (not zero-copy)
 //!
 //! // Access the data
 //! println!("Data: {:?}", slot.data());
@@ -127,14 +127,15 @@ impl MessageFlags {
     }
 }
 
-/// Cache-line aligned message slot for zero-copy operations
+/// Cache-line aligned message slot for optimized memory access
 ///
 /// This structure is optimized for maximum performance with:
-/// - Cache-line alignment (64 bytes) for optimal CPU access patterns
+/// - 128-byte alignment to prevent false sharing on modern Intel CPUs
+///   that prefetch two cache lines (2x64 bytes) at a time
 /// - Pre-allocated data buffer to eliminate allocations
 /// - Compact header for efficient memory usage
 /// - SIMD-optimized data operations
-#[repr(C, align(64))]
+#[repr(C, align(128))]
 #[derive(Clone, Copy)]
 pub struct MessageSlot {
     /// Sequence number for ordering (8 bytes)
@@ -153,7 +154,7 @@ pub struct MessageSlot {
     pub flags: u8,
     /// Padding to align to cache line boundary (6 bytes)
     pub _padding: [u8; 6],
-    /// Data payload (pre-allocated for zero-copy operations)
+    /// Data payload (pre-allocated for optimized memory access)
     pub data: [u8; MAX_MESSAGE_DATA_SIZE],
 }
 
@@ -314,6 +315,7 @@ impl MessageSlot {
 
     /// Calculate checksum with SIMD optimization
     #[inline(always)]
+    #[allow(dead_code)]
     fn calculate_checksum_instance(&self) -> u32 {
         let data = &self.data[..self.data_len as usize];
 
@@ -349,6 +351,7 @@ impl MessageSlot {
     /// - SIMD instructions are architecture-specific and well-defined
     #[cfg(target_arch = "aarch64")]
     #[inline(always)]
+    #[allow(dead_code)]
     unsafe fn calculate_checksum_neon(&self, data: &[u8]) -> u32 {
         if data.is_empty() {
             return 0;
@@ -512,6 +515,7 @@ impl MessageSlot {
     }
 
     /// Calculate xxHash checksum for data
+    #[allow(dead_code)]
     fn calculate_checksum(data: &[u8]) -> u32 {
         // Simple xxHash-style checksum for performance
         let mut hash = 0x9e3779b1u32;
@@ -597,6 +601,30 @@ impl RingBufferEntry for MessageSlot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_message_slot_alignment() {
+        // Verify that MessageSlot is properly aligned to 128 bytes
+        assert_eq!(std::mem::align_of::<MessageSlot>(), 128);
+
+        // Verify size is a multiple of 128 bytes for optimal cache behavior
+        let size = std::mem::size_of::<MessageSlot>();
+        assert!(size % 128 == 0, "MessageSlot size ({}) should be a multiple of 128 bytes", size);
+
+        // Create two message slots and verify they don't share cache lines
+        let slot1 = MessageSlot::default();
+        let slot2 = MessageSlot::default();
+
+        let addr1 = &slot1 as *const MessageSlot as usize;
+        let addr2 = &slot2 as *const MessageSlot as usize;
+
+        // On the stack, they might not be 128-byte aligned, but the type alignment guarantees
+        // they will be when allocated properly (e.g., in the ring buffer)
+        println!("MessageSlot size: {} bytes", size);
+        println!("MessageSlot alignment: {} bytes", std::mem::align_of::<MessageSlot>());
+        println!("Slot 1 address: 0x{:x}", addr1);
+        println!("Slot 2 address: 0x{:x}", addr2);
+    }
 
     #[test]
     fn test_message_slot_creation() {

@@ -1,74 +1,84 @@
 # Flux - High-Performance Message Transport
+> **Research Preview** 🧪  
+> Pre-Production - Breaking Changes Expected
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-brightgreen.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Flux is a high-performance message transport library (IPC, UDP, Reliable UDP) for Rust, implementing LMAX Disruptor patterns with zero-copy memory management and lock-free operations.
+Flux is a high-performance message transport library for Rust that implements patterns inspired by LMAX Disruptor and Aeron. It provides lock-free inter-process communication (IPC), UDP transport, and reliable UDP with optimized memory management for applications with low-latency requirements.
 
-> Optimizations still in progress, the readme will be updated as progress is made
-> 
->  Known issues atm:
-> - /docs/architecture.md needs to be updated to reflect the current state (code blocks are outdated)
-> - better alignment (64, 128, depending on CPUs) to fully prevent false-sharing
-> - cover resilience concerns 
-> - review safety concerns (`unsafe` in use here and there)
+> **Development Status**: This library is under active development with ongoing optimizations. Performance characteristics and APIs are subject to change as the implementation matures.
+
+## Key Features
+
+**Core Messaging**
+- Lock-free ring buffer with single-writer, multiple-reader semantics
+- Batch processing for amortized atomic operations
+- Cache-line aligned data structures for optimal memory access patterns
+- Support for 1M+ slot ring buffers with microsecond latencies
+
+**Transport Layer**
+- Basic UDP transport for general networking
+- Reliable UDP with NAK-based retransmission and optional forward error correction
+- Inter-process communication via shared memory
+- ✅ **(In Progress)** Kernel bypass zero-copy with io_uring on Linux
+
+**Platform Optimizations**
+- **Linux**: NUMA awareness, huge pages, real-time scheduling support
+- **macOS**: Apple Silicon optimizations with thread priority tuning
+- Cross-platform memory mapping and compiler auto-vectorization
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Flux Architecture                       │
+│                        Flux Architecture                        │
 ├─────────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐      │
-│  │  Producer   │    │  Producer   │    │  Producer   │      │
-│  │   (P1)      │    │   (P2)      │    │   (P3)      │      │
-│  └─────┬───────┘    └─────┬───────┘    └─────┬───────┘      │
-│        │                  │                  │               │
-│        └──────────────────┼──────────────────┘               │
-│                           │                                  │
-│                    ┌──────▼──────┐                           │
-│                    │ Ring Buffer │  ← Lock-free, zero-copy   │
-│                    │ (1M slots)  │     cache-line aligned    │
-│                    └──────┬──────┘                           │
-│                           │                                  │
-│        ┌──────────────────┼──────────────────┐               │
-│        │                  │                  │               │
-│  ┌─────▼──────┐    ┌─────▼──────┐    ┌─────▼──────┐        │
-│  │  Consumer  │    │  Consumer  │    │  Consumer  │        │
-│  │   (C1)     │    │   (C2)     │    │   (C3)     │        │
-│  └────────────┘    └────────────┘    └────────────┘        │
-│                                                               │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │              Performance Optimizations                 │   │
-│  │  • SIMD (NEON/AVX2) data copy                        │   │
-│  │  • Hardware CRC32 (ARM/x86)                           │   │
-│  │  • NUMA-aware allocation (Linux)                      │   │
-│  │  • Huge pages + io_uring (Linux)                      │   │
-│  │  • Cache-line padding + prefetching                   │   │
-│  │  • Batch processing (8K-128K slots)                   │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                               │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐          │
+│  │  Producer   │    │  Producer   │    │  Producer   │          │
+│  │     P1      │    │     P2      │    │     P3      │          │
+│  └─────┬───────┘    └─────┬───────┘    └─────┬───────┘          │
+│        │                  │                  │                  │
+│        └──────────────────┼──────────────────┘                  │
+│                           │                                     │
+│                    ┌──────▼──────┐                              │
+│                    │ Ring Buffer │  ← Lock-free, cache-aligned  │
+│                    │ (1M slots)  │                              │
+│                    └──────┬──────┘                              │
+│                           │                                     │
+│        ┌──────────────────┼──────────────────┐                  │
+│        │                  │                  │                  │
+│  ┌─────▼──────┐    ┌─────▼──────┐    ┌─────▼──────┐             │
+│  │  Consumer  │    │  Consumer  │    │  Consumer  │             │
+│  │     C1     │    │     C2     │    │     C3     │             │
+│  └────────────┘    └────────────┘    └────────────┘             │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │              Performance Optimizations                  │    │
+│  │  • Memory-mapped ring buffers                           │    │
+│  │  • Hardware CRC32 (ARM/x86)                             │    │
+│  │  • NUMA-aware allocation (Linux)                        │    │
+│  │  • Cache-line padding and prefetching                   │    │
+│  │  • Batch processing (configurable sizes)                │    │
+│  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Getting Started
+## Quick Start
 
-Flux is easy to use for basic message passing. Here's a minimal example:
+### Basic Ring Buffer Usage
 
 ```rust
 use flux::disruptor::{RingBuffer, RingBufferConfig, WaitStrategyType};
 
-// Create a ring buffer with 1M slots and 1 consumer
-let config = RingBufferConfig::new(1024 * 1024)
-    .unwrap()
-    .with_consumers(1)
-    .unwrap()
+// Create a ring buffer with 1M slots
+let config = RingBufferConfig::new(1024 * 1024)?
+    .with_consumers(1)?
     .with_wait_strategy(WaitStrategyType::BusySpin);
 
-let buffer = RingBuffer::new(config).unwrap();
+let buffer = RingBuffer::new(config)?;
 
-// Producer: claim and publish a batch
+// Producer: claim and publish messages
 if let Some((seq, slots)) = buffer.try_claim_slots(10) {
     for (i, slot) in slots.iter_mut().enumerate() {
         slot.set_sequence(seq + i as u64);
@@ -77,57 +87,36 @@ if let Some((seq, slots)) = buffer.try_claim_slots(10) {
     buffer.publish_batch(seq, slots.len());
 }
 
-// Consumer: read a batch,
+// Consumer: read messages
 let messages = buffer.try_consume_batch(0, 10);
 for message in messages {
     println!("Received: {:?}", message.data());
 }
 ```
 
-## High-Performance Usage
-
-For maximum throughput, use the memory-mapped or Linux-optimized ring buffer and large batch sizes:
+### High-Performance Configuration
 
 ```rust
 use flux::disruptor::{RingBufferConfig, ring_buffer::MappedRingBuffer};
 
-let config = RingBufferConfig::new(1024 * 1024)
-    .unwrap()
-    .with_consumers(4)
-    .unwrap()
+let config = RingBufferConfig::new(1024 * 1024)?
+    .with_consumers(4)?
     .with_optimal_batch_size(8192);
 
-let buffer = MappedRingBuffer::new_mapped(config).unwrap();
+let buffer = MappedRingBuffer::new_mapped(config)?;
 
-// Producer: claim a large batch for high throughput
+// Process large batches for maximum throughput
 if let Some((seq, slots)) = buffer.try_claim_slots(8192) {
-    for (i, slot) in slots.iter_mut().enumerate() {
-        slot.set_sequence(seq + i as u64);
-        // Use SIMD-optimized data copy for best performance
-        slot.set_data(b"Ultra-fast message");
-    }
+    // Batch processing logic
     buffer.publish_batch(seq, slots.len());
 }
 ```
 
-On Linux, enable all optimizations:
-
-```bash
-cargo build --release --features linux_optimized
-```
-
-And use the `LinuxRingBuffer` for NUMA, huge pages, and affinity.
-
-## UDP & Reliable UDP Transport
-
-Flux provides high-performance UDP transport with zero-copy operations and reliable delivery:
-
-### Basic UDP Transport
+### UDP Transport
 
 ```rust
 use flux::{BasicUdpTransport, BasicUdpConfig};
 
-// Configure basic UDP transport
 let config = BasicUdpConfig {
     local_addr: "0.0.0.0:8080".to_string(),
     buffer_size: 4096,
@@ -139,103 +128,45 @@ let config = BasicUdpConfig {
 let mut transport = BasicUdpTransport::new(config)?;
 transport.start()?;
 
-// Send messages
-transport.send(b"Hello, Flux!", addr)?;
-
-// Receive messages
+// Send and receive messages
+transport.send(b"Message", addr)?;
 if let Some((data, _addr)) = transport.receive()? {
     println!("Received: {:?}", data);
 }
 ```
 
-### Zero-Copy UDP Transport
+## Performance Characteristics
 
-```rust
-use flux::transport::zero_copy_udp::{ZeroCopyUdpTransport, ZeroCopyConfig};
+> **Note**: These benchmarks represent preliminary results from development hardware (Apple Silicon M1). Production performance will vary based on hardware, configuration, and workload characteristics.
 
-// Configure for high-performance UDP
-let config = ZeroCopyConfig {
-    batch_size: 1000,
-    buffer_size: 1024 * 1024,
-    socket_buffer_mb: 64,
-    busy_poll: true,
-    ..Default::default()
-};
+### IPC Ring Buffer Performance
 
-let transport = ZeroCopyUdpTransport::new(config)?;
-transport.start()?;
+| Configuration | Platform | Throughput | Notes |
+|---------------|----------|------------|-------|
+| Multi-producer peak | Apple M1 | 30.8M msgs/sec | Optimized batch processing |
+| Single producer | Apple M1 | 25.2M msgs/sec | Sustained high throughput |
+| Realistic workload | Apple M1 | 15.8M msgs/sec | Production-like conditions |
+| With validation | Apple M1 | 2.08M msgs/sec | Full integrity checking |
 
-// Send high-throughput batches
-let messages = vec![b"Hello"; 1000];
-transport.send_batch(&messages.iter().map(|m| m.as_slice()).collect::<Vec<_>>(), addr)?;
-```
+### Network Transport Performance
 
-### Reliable UDP with NAK-based Retransmission
+| Transport Type | Platform | Throughput | Use Case |
+|----------------|----------|------------|----------|
+| Basic UDP | Apple M1 | 260K msgs/sec | General networking |
+| Reliable UDP | Apple M1 | 150K msgs/sec | Mission-critical data |
 
-```rust
-use flux::transport::{ReliableUdpTransport, TransportConfig};
+**Performance Factors**:
+- Batch size and buffer configuration significantly impact throughput
+- Memory mapping and cache-line alignment provide 20-40% improvements
+- Platform-specific optimizations can yield additional performance gains
 
-let config = TransportConfig {
-    batch_size: 64,
-    buffer_size: 1024 * 1024,
-    retransmit_timeout_ms: 100,
-    max_retransmits: 3,
-    enable_fec: true,  // Forward Error Correction
-    ..Default::default()
-};
+## Transport Layer Comparison
 
-let mut transport = ReliableUdpTransport::new(config)?;
-transport.start()?;
-
-// Send with automatic retransmission and FEC
-transport.send(b"Reliable message", addr)?;
-
-// Receive with guaranteed delivery
-if let Some((data, _addr)) = transport.receive()? {
-    println!("Received: {:?}", data);
-}
-```
-
-**Performance:** 5M+ messages/sec for zero-copy UDP, 1M+ messages/sec for reliable UDP with full error correction.
-
-## Performance
-
-Flux is designed for high throughput and low latency. Here are example numbers from our benchmarks:
-
-| Test Scenario                | Platform         | Throughput         | Notes                        |
-|------------------------------|------------------|--------------------|------------------------------|
-| Minimal (no validation)      | Apple Silicon    | 173M msg/sec       | Raw memory bandwidth limit   |
-| Realistic (64B messages)     | Apple Silicon    | 38M msg/sec        | SIMD, batching, zero-copy    |
-| Realistic (Linux, NUMA, HP)  | x86_64 Linux     | 50-100M msg/sec    | NUMA, huge pages, affinity   |
-| UDP Transport (in-memory)    | Apple Silicon    | 10-20M msg/sec     | Reliable UDP, batching       |
-
-**Note:** Performance varies significantly based on:
-- **Configuration**: Batch size, buffer size, number of consumers
-- **Validation**: Whether message validation/checksums are enabled
-- **Hardware**: CPU cores, memory bandwidth, cache size
-- **Optimizations**: SIMD, memory mapping, CPU affinity
-
-Flux matches or exceeds Aeron/Disruptor in-memory throughput on modern hardware, and is ready for production use in high-throughput, low-latency systems.
-
-## Safety
-
-Flux uses unsafe code for performance-critical operations like SIMD operations and memory mapping. All unsafe code is:
-
-- **Carefully documented** with safety explanations
-- **Bounded by safety checks** to prevent undefined behavior  
-- **Thoroughly tested** for edge cases and race conditions
-- **Performance-justified** with measurable benefits
-
-See [SAFETY.md](./SAFETY.md) for comprehensive documentation of all unsafe code patterns.
-
-## Features
-
-- Lock-free ring buffer with single-writer, multiple-reader semantics
-- Zero-copy memory management with cache-line aligned data structures
-- Batch processing for amortized atomic operations
-- Platform-specific optimizations for Linux and macOS
-- Reliable UDP transport with NAK-based retransmission
-- Comprehensive error handling and monitoring
+| Transport | Best For | Limitations |
+|-----------|----------|-------------|
+| **Basic UDP** | High-frequency messaging, small packets | No reliability guarantees |
+| **Reliable UDP** | Mission-critical data, lossy networks | Higher latency overhead |
+| **IPC Ring Buffer** | Same-host communication, ultra-low latency | Single host only |
 
 ## Installation
 
@@ -244,59 +175,97 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 flux = "0.1.0"
+
+# Enable platform-specific optimizations
+[target.'cfg(target_os = "linux")'.dependencies]
+flux = { version = "0.1.0", features = ["linux_optimized"] }
 ```
 
 ## Platform Support
 
-### Linux
-- Full feature set including NUMA awareness and huge pages
-- Kernel bypass I/O with io_uring support
-- Thread affinity and real-time scheduling
+### Linux (Primary Target)
+- ✅ Full ring buffer functionality
+- ✅ UDP transport implementations
+- ✅ NUMA awareness and thread affinity
+- 🚧 Huge pages support (development active)
+- ✅ **(In Progress)** io_uring zero-copy integration
 
 ### macOS
-- Core functionality with Apple Silicon optimizations
-- NEON SIMD acceleration
-- P-core CPU pinning
+- ✅ Ring buffer with Apple Silicon optimizations
+- ✅ UDP transport with compiler auto-vectorization
+- ✅ Thread priority optimization
+- ⚠️ Limited thread affinity (Apple Silicon restrictions)
 
-## Examples
+### Windows
+- 🚧 Basic functionality planned (not yet implemented)
+
+## Safety and Reliability
+
+Flux uses `unsafe` code in performance-critical paths for:
+- Memory-mapped buffer operations
+- Cache-line aligned memory access
+- Low-level memory copying optimizations
+
+**Safety Measures**:
+- `unsafe` code is documented with safety justifications
+- Comprehensive bounds checking prevents buffer overruns
+- Memory barriers ensure proper ordering in concurrent scenarios
+- Extensive test coverage for edge cases and race conditions
+
+See [SAFETY.md](./SAFETY.md) for detailed documentation of all unsafe code usage.
+
+## Examples and Benchmarks
 
 ```bash
-# Basic usage
-cargo run --example example_basic_usage
+# Basic usage examples
+cargo run --example basic_usage
+cargo run --example udp_transport
+cargo run --example reliable_messaging
 
-# UDP transport with ring buffers
-cargo run --example example_udp_transport
-
-# Zero-copy UDP transport
-cargo run --example example_udp_transport --features io-uring
-
-# Linux optimizations
-cargo run --example example_linux_optimized --features linux_optimized
-
-# Realistic high throughput
-cargo run --example example_realistic_validated
-```
-
-## Benchmarks
-
-```bash
 # Performance benchmarks
-cargo run --release --bin bench_extreme
-cargo run --release --bin bench_macos_ultra_optimized
+cargo run --release --bin bench_ring_buffer_peak      # Maximum IPC throughput
+cargo run --release --bin bench_realistic_workload    # Production scenarios
+cargo run --release --bin bench_transport_comparison  # Network performance
+
+# Platform-specific optimizations
+cargo run --release --features linux_optimized --bin bench_linux_numa
 ```
 
-## Documentation
+## Roadmap
 
-- [Architecture](./docs/architecture.md)
-- [Getting Started](./docs/getting-started.md)
-- [Performance](./docs/performance.md)
-- [Platform Setup](./docs/platform-setup.md)
-- [Linux Optimizations](./docs/linux_optimizations.md)
+### Current Development (Q3 2025)
+- [x] [Linux] **(In Progress)** io_uring zero-copy integration
+- [ ] Stabilize reliable UDP implementation
+- [ ] Windows platform support
+- [ ] Comprehensive error handling and monitoring
+
+### Future Enhancements
+- [ ] Zero-copy operations
+- [ ] Dynamic buffer sizing
+- [ ] Multi-path redundancy for reliable transport
+- [ ] Distributed consensus protocols
 
 ## Contributing
 
-Contributions are welcome. Please read our contributing guidelines and ensure all tests pass before submitting a pull request.
+We welcome contributions! Please:
+
+1. Read our [Contributing Guide](./CONTRIBUTING.md)
+2. Check existing issues before creating new ones
+3. Ensure all tests pass: `cargo test --all-features`
+4. Run benchmarks to verify performance: `cargo run --release --bin bench_all`
+
+## Comparison with Existing Solutions
+
+**vs. LMAX Disruptor (Java)**: Flux implements similar lock-free ring buffer patterns with Rust's zero-cost abstractions and memory safety.
+
+**vs. Aeron**: While Aeron focuses on network transport with 6M+ msgs/sec, Flux provides both IPC and network transports in a unified library.
+
+**vs. Traditional Message Queues**: Eliminates broker overhead and provides predictable microsecond latencies through direct memory access.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details. 
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
+
+---
+
+**Disclaimer**: This is experimental software under active development. While we strive for accuracy in performance claims and technical specifications, results may vary across different hardware and software configurations. Always benchmark in your specific environment before using.

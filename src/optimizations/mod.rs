@@ -2,16 +2,8 @@
 //! Target: High-performance messaging comparable to industry standards
 
 pub mod advanced_simd;
-pub mod memory_pool;
 
 pub use advanced_simd::{ SimdOptimizer, SimdMemoryOps, benchmark_simd_optimizations };
-pub use memory_pool::{
-    MessagePool,
-    PooledMessageSlot,
-    ZeroCopyBatch,
-    PooledMessageProcessor,
-    benchmark_memory_pool,
-};
 
 /// Performance optimization configuration
 #[derive(Debug, Clone)]
@@ -49,8 +41,6 @@ pub struct OptimizationManager {
     config: OptimizationConfig,
     /// SIMD optimizer
     simd_optimizer: Option<SimdOptimizer>,
-    /// Memory pool
-    memory_pool: Option<MessagePool>,
 }
 
 impl OptimizationManager {
@@ -58,16 +48,9 @@ impl OptimizationManager {
     pub fn new(config: OptimizationConfig) -> Self {
         let simd_optimizer = if config.enable_simd { Some(SimdOptimizer::new()) } else { None };
 
-        let memory_pool = if config.enable_pooling {
-            Some(MessagePool::new(10000)) // 10K slots
-        } else {
-            None
-        };
-
         Self {
             config,
             simd_optimizer,
-            memory_pool,
         }
     }
 
@@ -76,10 +59,7 @@ impl OptimizationManager {
         self.simd_optimizer.as_ref()
     }
 
-    /// Get memory pool
-    pub fn memory_pool(&self) -> Option<&MessagePool> {
-        self.memory_pool.as_ref()
-    }
+    // Memory pool functionality moved to transport/true_zero_copy.rs
 
     /// Check if optimizations are enabled
     pub fn is_simd_enabled(&self) -> bool {
@@ -105,8 +85,11 @@ impl OptimizationManager {
         }
 
         if self.config.enable_pooling {
-            println!("\n📊 Memory Pool Benchmark:");
-            benchmark_memory_pool();
+            println!("\n📊 Zero-Copy Transport Benchmark:");
+            use crate::transport::optimized_copy::benchmark_optimized_copy_transport;
+            if let Err(e) = benchmark_optimized_copy_transport() {
+                println!("Benchmark failed: {}", e);
+            }
         }
 
         println!("\n🎯 Optimization Summary:");

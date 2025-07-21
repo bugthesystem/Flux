@@ -7,7 +7,7 @@
 //! ## Key Features
 //!
 //! - **Lock-Free Operations**: Single-writer, multiple-reader without locks
-//! - **Zero-Copy Access**: Direct memory access for maximum performance
+//! - **Direct Memory Access**: Optimized memory access for maximum performance
 //! - **Cache-Friendly**: Cache-line aligned with prefetching optimizations
 //! - **Batch Operations**: Efficient batch processing for higher throughput
 //! - **SIMD Optimizations**: Word-sized operations for faster data handling
@@ -60,10 +60,9 @@ use libc;
 
 use crate::disruptor::{ RingBufferConfig, MessageSlot, RingBufferEntry };
 use crate::error::{ Result, FluxError };
-use crate::constants::{ CACHE_PREFETCH_LINES, CACHE_LINE_SIZE };
+use crate::constants::CACHE_PREFETCH_LINES;
 
-#[cfg(target_arch = "aarch64")]
-use std::arch::aarch64::{ vld1q_u8, vst1q_u8 };
+// SIMD imports moved to specific functions where they're used
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{ _mm256_loadu_si256, _mm256_storeu_si256, __m256i };
@@ -73,37 +72,41 @@ use std::arch::x86_64::{ _mm256_loadu_si256, _mm256_storeu_si256, __m256i };
 pub mod ring_buffer_linux;
 
 /// Cache-line padded producer sequence to prevent false sharing
-#[repr(align(64))]
+/// Uses 128-byte alignment to prevent false sharing on modern Intel CPUs
+/// that prefetch two cache lines at a time
+#[repr(align(128))]
 pub struct PaddedProducerSequence {
-    /// Producer sequence (cache-line aligned)
+    /// Producer sequence (128-byte aligned)
     pub sequence: AtomicU64,
-    /// Padding to ensure cache-line alignment
-    _padding: [u8; CACHE_LINE_SIZE - 8],
+    /// Padding to ensure 128-byte alignment
+    _padding: [u8; 128 - 8],
 }
 
 impl PaddedProducerSequence {
     pub fn new(initial_value: u64) -> Self {
         Self {
             sequence: AtomicU64::new(initial_value),
-            _padding: [0; CACHE_LINE_SIZE - 8],
+            _padding: [0; 128 - 8],
         }
     }
 }
 
 /// Cache-line padded consumer sequence to prevent false sharing
-#[repr(align(64))]
+/// Uses 128-byte alignment to prevent false sharing on modern Intel CPUs
+/// that prefetch two cache lines at a time
+#[repr(align(128))]
 pub struct PaddedConsumerSequence {
-    /// Consumer sequence (cache-line aligned)
+    /// Consumer sequence (128-byte aligned)
     pub sequence: AtomicU64,
-    /// Padding to ensure cache-line alignment
-    _padding: [u8; CACHE_LINE_SIZE - 8],
+    /// Padding to ensure 128-byte alignment
+    _padding: [u8; 128 - 8],
 }
 
 impl PaddedConsumerSequence {
     pub fn new(initial_value: u64) -> Self {
         Self {
             sequence: AtomicU64::new(initial_value),
-            _padding: [0; CACHE_LINE_SIZE - 8],
+            _padding: [0; 128 - 8],
         }
     }
 }
@@ -144,7 +147,7 @@ pub struct RingBuffer {
     consumer_sequences: Vec<PaddedConsumerSequence>,
     /// Gating sequence (cache-line padded)
     /// Used to prevent the producer from overwriting unread messages
-    gating_sequence: PaddedProducerSequence,
+    _gating_sequence: PaddedProducerSequence,
 }
 
 impl RingBuffer {
@@ -192,7 +195,7 @@ impl RingBuffer {
             mask,
             producer_sequence: PaddedProducerSequence::new(0),
             consumer_sequences,
-            gating_sequence: PaddedProducerSequence::new(0),
+            _gating_sequence: PaddedProducerSequence::new(0),
         })
     }
 
@@ -281,8 +284,8 @@ impl RingBuffer {
         }
     }
 
-    /// ULTRA-FAST ZERO-COPY: Claim slots directly for maximum performance
-    pub fn try_claim_slots(&self, count: usize) -> Option<(u64, &mut [MessageSlot])> {
+    /// ULTRA-FAST DIRECT ACCESS: Claim slots directly for maximum performance
+    pub fn try_claim_slots(&mut self, count: usize) -> Option<(u64, &mut [MessageSlot])> {
         if count == 0 {
             return None;
         }
@@ -314,30 +317,25 @@ impl RingBuffer {
                 // Aggressively prefetch next slots into L1 cache for better performance
                 self.prefetch_slots(((current_seq + 1) & (self.mask as u64)) as usize, count * 2);
 
-                if ((current_seq + 1) as usize) + count <= self.config.size {
-                    // Contiguous slice - true zero-copy!
-                    let slots = unsafe {
-                        std::slice::from_raw_parts_mut(
-                            self.buffer
-                                .as_ptr()
-                                .add(
-                                    ((current_seq + 1) & (self.mask as u64)) as usize
-                                ) as *mut MessageSlot,
-                            count
-                        )
-                    };
-                    Some((current_seq + 1, slots))
+                let start_idx = ((current_seq + 1) as usize) & self.mask;
+                let end_idx = (next_seq as usize) & self.mask;
+
+                // Handle wrapping case properly
+                if start_idx < end_idx {
+                    // Contiguous range
+                    Some((current_seq + 1, &mut self.buffer[start_idx..end_idx]))
                 } else {
-                    // Wrapping case - for simplicity return None
-                    // In a full implementation, we'd handle wrapping
-                    None
+                    // Wrapped range - return only up to buffer end for now
+                    let available_slots = self.config.size - start_idx;
+                    let actual_count = count.min(available_slots);
+                    Some((current_seq + 1, &mut self.buffer[start_idx..start_idx + actual_count]))
                 }
             }
             Err(_) => None, // Failed to claim
         }
     }
 
-    /// Ultra-optimized batch claim with zero-copy
+    /// Ultra-optimized batch claim with direct memory access
     pub fn try_claim_slots_ultra(&mut self, count: usize) -> Option<(u64, &mut [MessageSlot])> {
         let current = self.producer_sequence.sequence.load(Ordering::Relaxed);
         let next = current + (count as u64);
@@ -360,20 +358,20 @@ impl RingBuffer {
         let start_idx = (current as usize) & self.mask;
         let end_idx = (next as usize) & self.mask;
 
-        // Zero-copy slice access
+        // Direct memory access (user must copy data into slots)
         let slots = if start_idx < end_idx {
             // Contiguous range
             &mut self.buffer[start_idx..end_idx]
         } else {
-            // Wrapped range - handle in two parts
-            let _first_part = self.config.size - start_idx;
-            let _second_part = end_idx;
+            // Wrapped range - can only handle up to buffer end
+            let available_slots = self.config.size - start_idx;
+            let actual_count = count.min(available_slots);
 
-            // Prefetch next cache lines for better performance
-            self.prefetch_slots_aggressive(start_idx, count);
+            // Prefetch cache lines for better performance
+            self.prefetch_slots_aggressive(start_idx, actual_count);
 
-            // Return first part, second part handled by caller
-            &mut self.buffer[start_idx..]
+            // Return only the requested count, not entire remainder
+            &mut self.buffer[start_idx..start_idx + actual_count]
         };
 
         Some((current, slots))
@@ -498,7 +496,7 @@ impl RingBuffer {
         messages
     }
 
-    /// Zero-copy batch consumption with SIMD optimization
+    /// Direct memory access batch consumption with SIMD optimization
     pub fn try_consume_batch_ultra(&self, consumer_id: usize, count: usize) -> &[MessageSlot] {
         let mut current = self.consumer_sequences[consumer_id].sequence.load(Ordering::Relaxed);
         if current == u64::MAX {
@@ -522,16 +520,19 @@ impl RingBuffer {
             Ordering::Relaxed
         );
 
-        // Return zero-copy slice
+        // Return direct memory access slice
         if start_idx < end_idx {
             &self.buffer[start_idx..end_idx]
         } else {
-            &self.buffer[start_idx..]
+            // Wrapped case - only return up to end of buffer, limited by batch_size
+            let available_to_end = self.config.size - start_idx;
+            let actual_size = batch_size.min(available_to_end);
+            &self.buffer[start_idx..start_idx + actual_size]
         }
     }
 
     /// Publish a batch of slots (called after filling them)
-    pub fn publish_batch(&self, start_seq: u64, count: usize) {
+    pub fn publish_batch(&self, _start_seq: u64, _count: usize) {
         // Memory barrier to ensure all data is written before publishing
         std::sync::atomic::fence(Ordering::Release);
     }
@@ -569,9 +570,9 @@ pub struct MappedRingBuffer {
     /// Consumer sequences (cache-line padded)
     consumer_sequences: Vec<PaddedConsumerSequence>,
     /// Configuration
-    config: RingBufferConfig,
+    _config: RingBufferConfig,
     /// File descriptor for memory mapping
-    fd: RawFd,
+    _fd: RawFd,
 }
 
 // SAFETY: The raw pointer is safe to share between threads because:
@@ -608,7 +609,7 @@ impl MappedRingBuffer {
                 ptr::null_mut(),
                 buffer_size,
                 libc::PROT_READ | libc::PROT_WRITE,
-                libc::MAP_SHARED | libc::MAP_ANONYMOUS,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
                 -1,
                 0
             );
@@ -638,8 +639,8 @@ impl MappedRingBuffer {
             mask: size - 1,
             producer_sequence: PaddedProducerSequence::new(0),
             consumer_sequences,
-            config,
-            fd: -1, // Anonymous mapping
+            _config: config,
+            _fd: -1, // Anonymous mapping
         })
     }
 
@@ -697,7 +698,7 @@ impl MappedRingBuffer {
                 } else {
                     // Wrapped around - need to handle in two parts
                     let first_part = self.size - start_index;
-                    let second_part = count - first_part;
+                    let _second_part = count - first_part;
 
                     // This is a simplified version - in practice you'd need to handle
                     // the wrapped case more carefully
@@ -825,7 +826,7 @@ impl Drop for MappedRingBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::disruptor::WaitStrategyType;
+    // use crate::disruptor::WaitStrategyType; // Not used in tests currently
 
     #[test]
     fn test_ring_buffer_creation() {

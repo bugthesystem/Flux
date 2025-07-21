@@ -2,7 +2,7 @@
 name = "flux"
 version = "0.1.0"
 edition = "2021"
-authors = ["Bug the System <sarikayaziya@gmail.com>"]
+authors = ["Bug the System <bug.the.system.dev@gmail.com>"]
 description = "High-performance message transport library implementing LMAX Disruptor patterns"
 license = "MIT OR Apache-2.0"
 keywords = ["high-performance", "messaging", "zero-copy", "disruptor"]
@@ -23,6 +23,7 @@ once_cell = "1.19"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 bincode = "2.0"
+crc32fast = "1.3"
 
 # System level optimizations
 memmap2 = "0.9"
@@ -106,6 +107,22 @@ path = "benches/bench_profile_analysis.rs"
 name = "bench_extreme_batching"
 path = "benches/bench_extreme_batching.rs"
 
+[[bin]]
+name = "bench_transport_comparison"
+path = "benches/bench_transport_comparison.rs"
+
+[[bin]]
+name = "bench_realistic_measurement"
+path = "benches/bench_realistic_measurement.rs"
+
+[[bin]]
+name = "bench_verified_multithread"
+path = "benches/bench_verified_multithread.rs"
+
+[[bin]]
+name = "thread_affinity_test"
+path = "tests/thread_affinity_test.rs"
+
 [[example]]
 name = "example_basic_usage"
 path = "examples/example_basic_usage.rs"
@@ -118,16 +135,18 @@ path = "examples/example_udp_transport.rs"
 name = "example_minimal_raw"
 path = "examples/example_minimal_raw.rs"
 
-[[example]]
-name = "example_realistic_validated"
-path = "examples/example_realistic_validated.rs"
 
-[[example]]
-name = "example_extreme_batching"
-path = "examples/example_extreme_batching.rs"
 
 [[example]]
 name = "example_linux_optimized"
 path = "examples/example_linux_optimized.rs"
+
+[[example]]
+name = "example_optimized_copy_reliable_udp"
+path = "examples/example_optimized_copy_reliable_udp.rs"
+
+[[example]]
+name = "fec_library_test"
+path = "examples/fec_library_test.rs"
 
  

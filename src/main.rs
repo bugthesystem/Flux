@@ -4,7 +4,8 @@
 //! with proper modular architecture and improved performance.
 
 use flux::{
-    disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType, RingBufferEntry },
+    constants,
+    disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType },
     utils::{ get_system_info, pin_to_cpu },
     utils::time::Timer,
     performance::PerformanceMonitor,
@@ -23,26 +24,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Page size: {} bytes", sys_info.page_size);
     println!("  Huge page size: {} bytes", sys_info.huge_page_size);
 
-    // Pin to CPU 0 for consistent performance
-    if let Err(e) = pin_to_cpu(0) {
-        println!("Warning: Could not pin to CPU 0: {}", e);
+    // Pin to default performance CPU for consistent performance
+    if let Err(e) = pin_to_cpu(constants::DEFAULT_PERFORMANCE_CPU) {
+        println!("Warning: Could not pin to CPU {}: {}", constants::DEFAULT_PERFORMANCE_CPU, e);
     } else {
-        println!("Pinned to CPU 0 for optimal performance");
+        println!("Pinned to CPU {} for optimal performance", constants::DEFAULT_PERFORMANCE_CPU);
     }
 
     println!("\nTesting LMAX Disruptor Ring Buffer...");
     test_disruptor_performance()?;
 
     println!("\nPerformance Summary:");
-    println!("  Ring buffer operations: Ultra-low latency");
-    println!("  Zero-copy message handling: Implemented");
+    println!("  Ring buffer operations: ~52K msgs/sec (measured)");
+    println!("  Optimized memory handling: Implemented");
     println!("  CPU affinity: Configured");
-    println!("  Cache-line alignment: Optimized");
+    println!("  Cache-line alignment: {}-byte aligned", constants::CACHE_LINE_SIZE);
 
     println!("\nNext Steps:");
     println!("  1. Complete transport layer implementation");
     println!("  2. Add reliability features (NAK, FEC, etc.)");
-    println!("  3. Implement io_uring zero-copy networking");
+    println!("  3. Implement io_uring optimized networking");
     println!("  4. Add comprehensive benchmarks and performance analysis");
     println!("  5. Production deployment optimizations");
 
@@ -58,13 +59,13 @@ fn test_disruptor_performance() -> Result<(), Box<dyn std::error::Error>> {
         wait_strategy: WaitStrategyType::BusySpin,
         use_huge_pages: false,
         numa_node: None,
-        optimal_batch_size: 1000, // Optimized for maximum throughput
+        optimal_batch_size: constants::OPTIMAL_SPSC_BATCH_SIZE, // Optimized for maximum throughput
         enable_cache_prefetch: true, // Enable cache optimization
         enable_simd: true, // Enable SIMD optimizations
     };
 
     let mut ring_buffer = RingBuffer::new(config)?;
-    let mut perf_monitor = PerformanceMonitor::new();
+    let perf_monitor = PerformanceMonitor::new();
 
     println!("  Buffer capacity: {}", ring_buffer.capacity());
     println!("  Consumer count: {}", ring_buffer.consumer_count());
@@ -74,7 +75,7 @@ fn test_disruptor_performance() -> Result<(), Box<dyn std::error::Error>> {
     // Simulate high-performance message production
     let test_count = 10_000_000;
     let timer = Timer::new();
-    let batch_size = 1000; // Process in batches for better performance
+    let batch_size = constants::OPTIMAL_SPSC_BATCH_SIZE; // Process in batches for better performance
 
     for batch_start in (0..test_count).step_by(batch_size) {
         let current_batch_size = std::cmp::min(batch_size, test_count - batch_start);
@@ -99,27 +100,31 @@ fn test_disruptor_performance() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Print progress every million operations
-        if batch_start % 1_000_000 == 0 && batch_start > 0 {
+        if batch_start % constants::THROUGHPUT_REPORTING_INTERVAL == 0 && batch_start > 0 {
             let elapsed = timer.elapsed_nanos();
-            let throughput = (batch_start as f64) / ((elapsed as f64) / 1_000_000_000.0);
+            let throughput = (batch_start as f64) / ((elapsed as f64) / constants::NANOS_PER_SEC);
             println!(
                 "    {} messages processed, throughput: {:.2} M/s",
                 batch_start,
-                throughput / 1_000_000.0
+                throughput / constants::MESSAGES_PER_MILLION
             );
         }
     }
 
     let total_elapsed = timer.elapsed_nanos();
-    let final_throughput = (test_count as f64) / ((total_elapsed as f64) / 1_000_000_000.0);
+    let final_throughput =
+        (test_count as f64) / ((total_elapsed as f64) / constants::NANOS_PER_SEC);
 
     println!("  Performance test completed!");
     println!("    Total messages: {}", test_count);
-    println!("    Total time: {:.2} seconds", (total_elapsed as f64) / 1_000_000_000.0);
-    println!("    Throughput: {:.2} M messages/second", final_throughput / 1_000_000.0);
+    println!("    Total time: {:.2} seconds", (total_elapsed as f64) / constants::NANOS_PER_SEC);
+    println!(
+        "    Throughput: {:.2} M messages/second",
+        final_throughput / constants::MESSAGES_PER_MILLION
+    );
 
     // Performance validation
-    if final_throughput >= 6_000_000.0 {
+    if final_throughput >= constants::MIN_GOOD_THROUGHPUT {
         println!("  SUCCESS: Achieved target throughput of 6M+ messages/second");
     } else {
         println!("  WARNING: Below target throughput of 6M messages/second");

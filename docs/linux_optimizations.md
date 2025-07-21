@@ -104,7 +104,7 @@ This benchmark uses all Linux optimizations:
 - Maximum priority
 
 ### Expected Performance
-- **Single-threaded**: 50-100M messages/second
+- **Single-threaded**: Target 50-100M messages/second (requires implementation)
 - **Multi-threaded**: 100-500M messages/second
 - **With kernel bypass**: 1B+ messages/second
 

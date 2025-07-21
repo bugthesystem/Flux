@@ -1,12 +1,7 @@
 use std::time::{ Duration, Instant };
 use std::thread;
 use std::sync::Arc;
-use flux::disruptor::{
-    RingBufferConfig,
-    ring_buffer::MappedRingBuffer,
-    MessageSlot,
-    RingBufferEntry,
-};
+use flux::disruptor::{ RingBufferConfig, ring_buffer::MappedRingBuffer, RingBufferEntry };
 use flux::utils::{ pin_to_cpu, macos_optimizations };
 
 fn main() {

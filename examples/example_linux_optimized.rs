@@ -2,7 +2,7 @@ use std::time::{ Duration, Instant };
 use std::thread;
 use std::sync::Arc;
 use std::sync::atomic::{ AtomicU64, Ordering };
-use flux::disruptor::{ RingBufferConfig, MessageSlot, RingBufferEntry };
+use flux::disruptor::{ RingBufferConfig, RingBufferEntry };
 
 // Linux-specific imports
 #[cfg(
@@ -73,7 +73,7 @@ fn main() {
 
     #[cfg(not(all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages"))))]
     let buffer = {
-        use flux::disruptor::{ RingBuffer, ring_buffer::MappedRingBuffer };
+        use flux::disruptor::ring_buffer::MappedRingBuffer;
         Arc::new(MappedRingBuffer::new_mapped(config).expect("Failed to create ring buffer"))
     };
 
@@ -85,7 +85,7 @@ fn main() {
 
     // ULTIMATE PRODUCERS - 8 producers for maximum throughput
     let producer_handles: Vec<_> = (0..8)
-        .map(|producer_id| {
+        .map(|_producer_id| {
             let buffer = Arc::clone(&buffer);
             let total_sent = Arc::clone(&total_sent);
             thread::spawn(move || {
@@ -150,12 +150,12 @@ fn main() {
         .collect();
 
     // Wait for all threads
-    let sent: u64 = producer_handles
+    let _sent: u64 = producer_handles
         .into_iter()
         .map(|h| h.join().unwrap())
         .sum();
 
-    let received: u64 = consumer_handles
+    let _received: u64 = consumer_handles
         .into_iter()
         .map(|h| h.join().unwrap())
         .sum();

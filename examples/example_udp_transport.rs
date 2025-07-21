@@ -1,6 +1,5 @@
-use flux::{ RingBuffer, FluxError, BasicUdpTransport, BasicUdpConfig };
-use flux::disruptor::{ RingBufferConfig, WaitStrategyType };
-use std::net::{ UdpSocket, SocketAddr };
+use flux::{ BasicUdpTransport, BasicUdpConfig };
+use std::net::SocketAddr;
 use std::thread;
 use std::time::{ Duration, Instant };
 
@@ -16,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Client: {}", client_addr);
 
     // Start server and client
-    let server_handle = thread::spawn(move || {
+    let _server_handle = thread::spawn(move || {
         if let Err(e) = run_server(server_addr) {
             eprintln!("Server error: {}", e);
         }

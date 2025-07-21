@@ -1,4 +1,5 @@
 //! CPU utilities for performance optimization
+//! Used by SIMD optimizations and system configuration
 
 use crate::error::Result;
 
@@ -276,7 +277,6 @@ pub unsafe fn prefetch_data(ptr: *const u8, offset: usize) {
 #[cfg(target_os = "macos")]
 pub mod macos_optimizations {
     use super::*;
-    
 
     /// Set thread priority for real-time performance
     pub fn set_thread_priority() -> Result<()> {
@@ -369,6 +369,94 @@ pub struct CpuInfo {
     pub l3_cache_size: usize,
 }
 
+/// Adaptive cache alignment that detects the optimal alignment for the current CPU
+pub struct AdaptiveCacheAlignment {
+    /// Detected cache line size
+    cache_line_size: usize,
+    /// Optimal alignment (may be larger than cache line for some CPUs)
+    optimal_alignment: usize,
+}
+
+impl AdaptiveCacheAlignment {
+    /// Create adaptive cache alignment based on CPU detection
+    pub fn new() -> Self {
+        let cpu_info = get_cpu_info();
+        let cache_line_size = cpu_info.cache_line_size;
+
+        // Modern Intel CPUs prefetch 2 cache lines, Apple Silicon has 128-byte lines
+        let optimal_alignment = match cpu_info.simd_level {
+            SimdLevel::AppleSilicon => 128, // Apple Silicon native
+            SimdLevel::AVX512 => 128, // High-end Intel, prefetch 2x64
+            SimdLevel::AVX2 => 128, // Modern Intel, prefetch 2x64
+            SimdLevel::SSE2 => 64, // Older Intel
+            SimdLevel::NEON => 64, // ARM64 (non-Apple)
+            SimdLevel::None => 64, // Safe default
+        };
+
+        Self {
+            cache_line_size,
+            optimal_alignment,
+        }
+    }
+
+    /// Get the cache line size for this CPU
+    pub fn cache_line_size(&self) -> usize {
+        self.cache_line_size
+    }
+
+    /// Get the optimal alignment for this CPU
+    pub fn optimal_alignment(&self) -> usize {
+        self.optimal_alignment
+    }
+
+    /// Check if an address is optimally aligned
+    pub fn is_aligned(&self, addr: usize) -> bool {
+        addr % self.optimal_alignment == 0
+    }
+
+    /// Round up to optimal alignment
+    pub fn align_up(&self, value: usize) -> usize {
+        (value + self.optimal_alignment - 1) & !(self.optimal_alignment - 1)
+    }
+
+    /// Round down to optimal alignment
+    pub fn align_down(&self, value: usize) -> usize {
+        value & !(self.optimal_alignment - 1)
+    }
+
+    /// Create a compile-time alignment macro based on detected CPU
+    pub fn alignment_attr(&self) -> &'static str {
+        match self.optimal_alignment {
+            128 => "#[repr(align(128))]",
+            64 => "#[repr(align(64))]",
+            _ => "#[repr(align(64))]", // Safe fallback
+        }
+    }
+}
+
+/// Global adaptive alignment instance
+static ADAPTIVE_ALIGNMENT: std::sync::OnceLock<AdaptiveCacheAlignment> = std::sync::OnceLock::new();
+
+/// Get the global adaptive alignment instance
+pub fn get_adaptive_alignment() -> &'static AdaptiveCacheAlignment {
+    ADAPTIVE_ALIGNMENT.get_or_init(|| AdaptiveCacheAlignment::new())
+}
+
+/// Get optimal alignment for the current CPU (runtime detection)
+pub fn get_optimal_alignment() -> usize {
+    get_adaptive_alignment().optimal_alignment()
+}
+
+/// Get cache line size for the current CPU
+pub fn get_cache_line_size() -> usize {
+    get_adaptive_alignment().cache_line_size()
+}
+
+/// Check if adaptive alignment suggests using 128-byte alignment
+pub fn should_use_128_byte_alignment() -> bool {
+    get_optimal_alignment() >= 128
+}
+
 /// Get the number of CPU cores
 pub fn get_cpu_count() -> usize {
     num_cpus::get()
@@ -418,14 +506,27 @@ mod tests {
 
     #[test]
     fn test_fast_memcpy() {
-        let src = b"Hello, World! This is a test message for optimization.";
-        let mut dst = vec![0u8; src.len()];
+        // Create a test message that's a multiple of 16 bytes
+        let message = "Hello, World! This is a test message for optimization.";
+        let len = ((message.len() + 15) / 16) * 16; // Round up to next multiple of 16
+        let mut src_buf = vec![0u8; len];
+        src_buf[..message.len()].copy_from_slice(message.as_bytes());
+
+        // Allocate destination buffer with 16-byte alignment
+        let mut dst_buf = vec![0u8; len];
+
+        // Ensure both source and destination are 16-byte aligned
+        let src_ptr = src_buf.as_ptr() as usize;
+        let dst_ptr = dst_buf.as_mut_ptr() as usize;
+
+        assert_eq!(src_ptr % 16, 0, "Source buffer is not 16-byte aligned");
+        assert_eq!(dst_ptr % 16, 0, "Destination buffer is not 16-byte aligned");
 
         unsafe {
-            fast_memcpy(dst.as_mut_ptr(), src.as_ptr(), src.len());
+            fast_memcpy(dst_buf.as_mut_ptr(), src_buf.as_ptr(), len);
         }
 
-        assert_eq!(dst, src);
+        assert_eq!(&dst_buf[..message.len()], message.as_bytes());
     }
 
     #[test]
@@ -446,6 +547,12 @@ mod tests {
         assert!(info.cache_line_size > 0);
         assert!(info.l1_cache_size > 0);
         assert!(info.l2_cache_size > 0);
+
+        // L3 cache is not available on Apple Silicon (M1/M2)
+        #[cfg(target_arch = "aarch64")]
+        assert_eq!(info.l3_cache_size, 0);
+
+        #[cfg(not(target_arch = "aarch64"))]
         assert!(info.l3_cache_size > 0);
     }
 

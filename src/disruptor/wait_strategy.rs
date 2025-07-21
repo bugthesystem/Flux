@@ -327,7 +327,7 @@ impl WaitStrategyFactory {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicBool;
-    use std::sync::Arc;
+    // use std::sync::Arc; // Not used in tests currently
 
     #[test]
     fn test_busy_spin_wait_strategy() {

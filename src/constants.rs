@@ -114,14 +114,50 @@ pub const MAX_SESSION_ID: u32 = u32::MAX;
 /// Maximum timestamp value (nanoseconds since epoch)
 pub const MAX_TIMESTAMP: u64 = u64::MAX;
 
-/// Deprecated constant for backward compatibility
-#[deprecated(since = "0.1.0", note = "Use DEFAULT_RING_BUFFER_SIZE instead")]
-pub const DEFAULT_RING_SIZE: usize = DEFAULT_RING_BUFFER_SIZE;
+/// Default CPU for performance-critical threads
+/// - CPU 0 is typically reserved for system tasks on some systems
+/// - Use with caution and proper capability detection
+pub const DEFAULT_PERFORMANCE_CPU: usize = 0;
 
-/// Deprecated constant for backward compatibility
-#[deprecated(since = "0.1.0", note = "Use MAX_UDP_PAYLOAD instead")]
-pub const MAX_UDP_PAYLOAD_SIZE: usize = MAX_UDP_PAYLOAD;
+/// Nanoseconds per second for time calculations
+/// - Used in throughput calculations: msgs/sec = count / (nanos / NANOS_PER_SEC)
+pub const NANOS_PER_SEC: f64 = 1_000_000_000.0;
 
+/// Messages per million for throughput display
+/// - Display convenience: 22_464_890 msgs/sec → 22.46 M msgs/sec
+pub const MESSAGES_PER_MILLION: f64 = 1_000_000.0;
+
+/// Throughput reporting interval
+/// - Report progress every 1M messages processed
+/// - Provides user feedback without overwhelming console output
+pub const THROUGHPUT_REPORTING_INTERVAL: usize = 1_000_000;
+
+/// Minimum throughput for success classification
+/// - 6M msgs/sec is considered "good" performance baseline
+/// - Based on industry standards (LMAX Disruptor, Aeron benchmarks)
+pub const MIN_GOOD_THROUGHPUT: f64 = 6_000_000.0;
+
+/// NAK (Negative Acknowledgment) timeout for reliable UDP
+/// - 50ms timeout before requesting retransmission
+/// - Tuned for high-frequency networks (1-10ms RTT)
+/// - Shorter timeouts improve reliability, longer timeouts reduce overhead
+pub const NAK_TIMEOUT_MS: u64 = 50;
+
+/// Out-of-order buffer size for reliable UDP
+/// - 1000 messages can arrive out-of-order before dropping
+/// - Handles network jitter and routing variations
+/// - Memory usage: ~1000 * average_message_size
+pub const MAX_OUT_OF_ORDER_MESSAGES: usize = 1000;
+
+/// Heartbeat interval for connection keep-alive
+/// - 1 second interval balances network overhead vs. quick failure detection
+/// - Recommended for reliable UDP connections
+pub const HEARTBEAT_INTERVAL_MS: u64 = 1000;
+
+/// Session timeout for connection management
+/// - 30 seconds before considering a peer disconnected
+/// - Allows for temporary network issues while preventing resource leaks
+pub const SESSION_TIMEOUT_MS: u64 = 30000;
 /// Validate that all constants are properly configured
 pub fn validate_constants() -> Result<(), &'static str> {
     // Validate ring buffer sizes are powers of 2

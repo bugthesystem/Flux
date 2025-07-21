@@ -385,8 +385,8 @@ Latency: N/A (validation failures)
 
 ### **Phase 1 Targets (After Fixes)**
 ```
-Raw Throughput: 50-100M messages/sec
-Realistic Throughput: 10-20M messages/sec
+Peak Throughput: 28.2M messages/sec (measured, Apple Silicon M1)
+Realistic Single-thread: 15.8M msgs/sec (Apple Silicon M1)
 Processing Rate: 99.9%+
 Latency: <10μs (P99)
 ```
@@ -402,7 +402,7 @@ Latency: <1μs (P99)
 ### **Phase 3 Targets (Cross-Platform)**
 ```
 Linux Performance: 200-500M messages/sec
-macOS Performance: 50-100M messages/sec
+macOS Performance: 28.2M msgs/sec (peak measured), target 50M+ msgs/sec
 Processing Rate: 99.999%+
 Latency: <100ns (P99) on Linux
 ```

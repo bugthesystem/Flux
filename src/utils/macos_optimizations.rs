@@ -1,10 +1,15 @@
 //! macOS-specific optimizations for Apple Silicon
 //!
 //! This module provides platform-specific optimizations for macOS/Apple Silicon:
-//! - P-core detection and thread pinning
+//! - Thread affinity hints (Intel only - Apple Silicon not supported)
 //! - Memory locking and alignment
 //! - Process/thread priority optimization
 //! - Grand Central Dispatch integration
+//!
+//! ## Thread Affinity Support Check
+//! **Apple Silicon (M1/M2)**: Thread affinity is NOT supported (returns KERN_NOT_SUPPORTED)
+//! **Intel Macs**: Limited affinity "hints" only (not hard CPU binding)
+//! **Alternative**: Use QoS classes for thread priority optimization
 
 use crate::error::{ Result, FluxError };
 use std::ptr;
@@ -19,6 +24,40 @@ use libc::{
     pthread_set_qos_class_self_np,
     qos_class_t,
 };
+
+// Thread affinity imports - available on macOS but limited support
+#[cfg(target_os = "macos")]
+use libc::{ mach_port_t, kern_return_t, integer_t, mach_msg_type_number_t };
+
+// These constants are defined in mach/thread_policy.h
+#[cfg(target_os = "macos")]
+const THREAD_AFFINITY_POLICY: u32 = 4;
+#[cfg(target_os = "macos")]
+const THREAD_AFFINITY_POLICY_COUNT: u32 = 1;
+#[cfg(target_os = "macos")]
+const THREAD_AFFINITY_TAG_NULL: integer_t = 0;
+
+// Mach thread policy structure
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct ThreadAffinityPolicyData {
+    affinity_tag: integer_t,
+}
+
+// External functions from libSystem (available but limited on Apple Silicon)
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn thread_policy_set(
+        thread: mach_port_t,
+        flavor: u32,
+        policy_info: *const ThreadAffinityPolicyData,
+        count: mach_msg_type_number_t
+    ) -> kern_return_t;
+
+    fn pthread_mach_thread_np(thread: libc::pthread_t) -> mach_port_t;
+
+    fn mach_thread_self() -> mach_port_t;
+}
 
 /// Apple Silicon core types
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -299,5 +338,120 @@ mod tests {
         let ptr = 0x1001 as *mut u8;
         let aligned = align_to_cache_line(ptr);
         assert_eq!((aligned as usize) % get_cache_line_size(), 0);
+    }
+}
+
+/// Real thread affinity implementation for macOS
+///
+/// IMPORTANT: This has severe limitations on Apple Silicon!
+/// - Apple Silicon (M1/M2): Returns KERN_NOT_SUPPORTED (thread affinity disabled in hardware)
+/// - Intel Macs: Limited "hints" only - not guaranteed CPU binding
+/// - Alternative: Use QoS classes (ThreadOptimizer) for thread priority
+pub struct ThreadAffinity;
+
+impl ThreadAffinity {
+    /// Attempt to set thread affinity hint (Intel only, fails on Apple Silicon)
+    ///
+    /// ## Parameters
+    /// - `cpu_id`: CPU core ID to hint for affinity
+    ///
+    /// ## Returns
+    /// - `Ok(())`: Affinity hint was set (Intel Macs only)
+    /// - `Err(...)`: Apple Silicon (not supported) or other error
+    ///
+    /// ## Apple Silicon Reality
+    /// This will ALWAYS fail on M1/M2 with "Thread affinity not supported on Apple Silicon"
+    #[cfg(target_os = "macos")]
+    pub fn set_thread_affinity(cpu_id: usize) -> Result<()> {
+        // Get current thread's Mach port using pthread_self()
+        let current_thread = unsafe { pthread_mach_thread_np(libc::pthread_self()) };
+
+        // Set affinity policy data
+        let policy_data = ThreadAffinityPolicyData {
+            affinity_tag: cpu_id as integer_t,
+        };
+
+        // Attempt to set thread policy
+        let result = unsafe {
+            thread_policy_set(
+                current_thread,
+                THREAD_AFFINITY_POLICY,
+                &policy_data as *const ThreadAffinityPolicyData,
+                THREAD_AFFINITY_POLICY_COUNT
+            )
+        };
+
+        match result {
+            0 => {
+                // KERN_SUCCESS - worked on Intel Macs
+                println!("✅ Thread affinity hint set to CPU {} (Intel Mac)", cpu_id);
+                Ok(())
+            }
+            46 => {
+                // KERN_NOT_SUPPORTED - Apple Silicon
+                Err(
+                    FluxError::config(
+                        "Thread affinity not supported on Apple Silicon (M1/M2). Use QoS classes instead."
+                    )
+                )
+            }
+            4 => {
+                // KERN_INVALID_ARGUMENT
+                Err(FluxError::config(format!("Invalid CPU ID: {} (check CPU count)", cpu_id)))
+            }
+            _ => {
+                // Other error
+                Err(FluxError::config(format!("Thread affinity failed with error: {}", result)))
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn set_thread_affinity(_cpu_id: usize) -> Result<()> {
+        Err(FluxError::config("Thread affinity only available on macOS"))
+    }
+
+    /// Check if thread affinity is supported on current system
+    ///
+    /// Returns false on Apple Silicon, true on Intel Macs (with caveats)
+    #[cfg(target_os = "macos")]
+    pub fn is_supported() -> bool {
+        // Quick test - try to set a null affinity tag
+        let policy_data = ThreadAffinityPolicyData {
+            affinity_tag: THREAD_AFFINITY_TAG_NULL,
+        };
+
+        let current_thread = unsafe { mach_thread_self() };
+        let result = unsafe {
+            thread_policy_set(
+                current_thread,
+                THREAD_AFFINITY_POLICY,
+                &policy_data as *const ThreadAffinityPolicyData,
+                THREAD_AFFINITY_POLICY_COUNT
+            )
+        };
+
+        result == 0 // KERN_SUCCESS means supported (Intel), anything else means not supported
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn is_supported() -> bool {
+        false
+    }
+
+    /// Get platform-specific thread affinity information
+    pub fn get_affinity_info() -> String {
+        #[cfg(target_os = "macos")]
+        {
+            if Self::is_supported() {
+                "Intel Mac: Thread affinity hints available (not guaranteed)".to_string()
+            } else {
+                "Apple Silicon: Thread affinity NOT supported. Use QoS classes instead.".to_string()
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            "Non-macOS platform".to_string()
+        }
     }
 }

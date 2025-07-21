@@ -1,14 +1,23 @@
 //! Advanced SIMD optimizations for maximum performance
 //! Target: 3-5x improvement over baseline
+//!
+//! Supports:
+//! - x86_64: SSE2, AVX2, AVX-512
+//! - ARM64: NEON (including Apple Silicon optimizations)
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
-/// SIMD-optimized data copying using AVX2/AVX-512
+#[cfg(target_arch = "aarch64")]
+use std::arch::aarch64::*;
+
+/// SIMD-optimized data copying using AVX2/AVX-512/NEON
 pub struct SimdOptimizer {
     /// CPU features available
     avx2_available: bool,
     avx512_available: bool,
+    neon_available: bool,
+    apple_silicon: bool,
     /// Optimal batch size for SIMD operations
     optimal_batch_size: usize,
 }
@@ -27,11 +36,37 @@ impl SimdOptimizer {
             } else {
                 16
             };
-            Self { avx2_available, avx512_available, optimal_batch_size }
+            Self {
+                avx2_available,
+                avx512_available,
+                neon_available: false,
+                apple_silicon: false,
+                optimal_batch_size,
+            }
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "aarch64")]
         {
-            Self { avx2_available: false, avx512_available: false, optimal_batch_size: 16 }
+            let neon_available = true; // ARM64 always has NEON
+            let apple_silicon = cfg!(target_os = "macos");
+            let optimal_batch_size = if apple_silicon { 128 } else { 16 };
+
+            Self {
+                avx2_available: false,
+                avx512_available: false,
+                neon_available,
+                apple_silicon,
+                optimal_batch_size,
+            }
+        }
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            Self {
+                avx2_available: false,
+                avx512_available: false,
+                neon_available: false,
+                apple_silicon: false,
+                optimal_batch_size: 16,
+            }
         }
     }
 
@@ -47,7 +82,15 @@ impl SimdOptimizer {
                 self.fallback_copy(dst, src)
             }
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "aarch64")]
+        {
+            if self.neon_available {
+                self.neon_copy(dst, src)
+            } else {
+                self.fallback_copy(dst, src)
+            }
+        }
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         {
             self.fallback_copy(dst, src)
         }
@@ -105,6 +148,31 @@ impl SimdOptimizer {
         len
     }
 
+    /// NEON optimized copy (16 bytes at once)
+    #[cfg(target_arch = "aarch64")]
+    unsafe fn neon_copy(&self, dst: &mut [u8], src: &[u8]) -> usize {
+        let len = std::cmp::min(dst.len(), src.len());
+        let mut copied = 0;
+
+        // Process 16-byte chunks with NEON
+        while copied + 16 <= len {
+            let src_ptr = src.as_ptr().add(copied);
+            let dst_ptr = dst.as_mut_ptr().add(copied);
+
+            let data = vld1q_u8(src_ptr);
+            vst1q_u8(dst_ptr, data);
+
+            copied += 16;
+        }
+
+        // Handle remaining bytes
+        if copied < len {
+            self.fallback_copy(&mut dst[copied..], &src[copied..]);
+        }
+
+        len
+    }
+
     /// Fallback copy for non-SIMD or remaining bytes
     fn fallback_copy(&self, dst: &mut [u8], src: &[u8]) -> usize {
         let len = std::cmp::min(dst.len(), src.len());
@@ -124,7 +192,15 @@ impl SimdOptimizer {
                 self.fallback_checksum(data)
             }
         }
-        #[cfg(not(target_arch = "x86_64"))]
+        #[cfg(target_arch = "aarch64")]
+        {
+            if self.neon_available {
+                self.neon_checksum(data)
+            } else {
+                self.fallback_checksum(data)
+            }
+        }
+        #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
         {
             self.fallback_checksum(data)
         }
@@ -188,6 +264,33 @@ impl SimdOptimizer {
         }
 
         hash
+    }
+
+    /// NEON optimized checksum
+    #[cfg(target_arch = "aarch64")]
+    unsafe fn neon_checksum(&self, data: &[u8]) -> u32 {
+        if data.is_empty() {
+            return 0;
+        }
+
+        let mut checksum = 0u32;
+        let chunks = data.len() / 16;
+
+        for i in 0..chunks {
+            let offset = i * 16;
+            let chunk = vld1q_u8(data.as_ptr().add(offset));
+
+            // Sum all bytes in the chunk
+            let sum = vaddvq_u8(chunk);
+            checksum = checksum.wrapping_add(sum as u32);
+        }
+
+        // Handle remaining bytes
+        for i in chunks * 16..data.len() {
+            checksum = checksum.wrapping_add(data[i] as u32);
+        }
+
+        checksum
     }
 
     /// Fallback checksum calculation
@@ -281,6 +384,16 @@ impl SimdOptimizer {
     pub fn avx512_available(&self) -> bool {
         self.avx512_available
     }
+
+    /// Check if running on Apple Silicon
+    pub fn is_apple_silicon(&self) -> bool {
+        self.apple_silicon
+    }
+
+    /// Check if NEON is available
+    pub fn neon_available(&self) -> bool {
+        self.neon_available
+    }
 }
 
 /// SIMD-optimized memory operations
@@ -289,7 +402,7 @@ pub struct SimdMemoryOps;
 impl SimdMemoryOps {
     /// Zero memory with SIMD
     pub unsafe fn simd_zero(dst: &mut [u8]) {
-        let optimizer = SimdOptimizer::new();
+        let _optimizer = SimdOptimizer::new();
 
         #[cfg(target_arch = "x86_64")]
         {
@@ -356,7 +469,7 @@ impl SimdMemoryOps {
             return false;
         }
 
-        let optimizer = SimdOptimizer::new();
+        let _optimizer = SimdOptimizer::new();
 
         #[cfg(target_arch = "x86_64")]
         {

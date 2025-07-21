@@ -35,6 +35,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Batch size: {}", batch_size);
     println!("  Message size: {} bytes", message_size);
 
+    // PRE-ALLOCATE all data to avoid hot path allocations
+    let mut pre_allocated_messages = Vec::with_capacity(batch_size);
+    let mut pre_allocated_batch_data = Vec::with_capacity(batch_size);
+
+    // Create reusable message buffers
+    for i in 0..batch_size {
+        let msg = format!(
+            "FLUX_MSG_{:010}_HIGH_PERF{:0width$}",
+            i,
+            "",
+            width = (message_size as usize).saturating_sub(30)
+        );
+        let msg_bytes = msg.into_bytes();
+        pre_allocated_messages.push(msg_bytes);
+    }
+
+    // Create references for batch publishing
+    for msg in &pre_allocated_messages {
+        pre_allocated_batch_data.push(msg.as_slice());
+    }
+
     let timer = Timer::new();
     let start_time = Instant::now();
 
@@ -46,23 +67,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let remaining = test_messages - messages_sent;
         let current_batch_size = remaining.min(batch_size);
 
-        // Prepare batch data
-        let mut batch_data = Vec::with_capacity(current_batch_size);
-        let mut message_strings = Vec::with_capacity(current_batch_size);
+        // Use pre-allocated data slices
+        let batch_slice = &pre_allocated_batch_data[..current_batch_size];
 
-        for i in 0..current_batch_size {
-            let seq = messages_sent + i;
-            let data = format!("FLUX_MSG_{:010}_HIGH_PERF", seq);
-            let padded_data = format!("{:0width$}", data, width = message_size.min(1024));
-            message_strings.push(padded_data);
-        }
-
-        // Convert to byte slices
-        for msg in &message_strings {
-            batch_data.push(msg.as_bytes());
-        }
-
-        match ring_buffer.try_publish_batch(&batch_data) {
+        match ring_buffer.try_publish_batch(batch_slice) {
             Ok(published_count) => {
                 messages_sent += published_count as usize;
                 successful_batches += 1;
