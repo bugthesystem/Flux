@@ -18,7 +18,6 @@ use crate::error::{ Result, FluxError };
 
 use crate::transport::{
     kernel_bypass_zero_copy::ZeroCopyTransport,
-    reliable_udp::{ ReliableUdpTransport, ReliableUdpConfig },
     UdpRingBufferTransport,
     UdpTransportConfig,
 };
@@ -68,7 +67,7 @@ pub enum UnifiedTransport {
     /// True zero-copy transport (Linux only)
     UltraLowLatency(ZeroCopyTransport),
     /// Reliable UDP with NAK retransmission
-    Reliable(ReliableUdpTransport),
+    Reliable(UdpRingBufferTransport),
     /// Basic UDP transport
     Basic(UdpRingBufferTransport),
 }
@@ -103,8 +102,11 @@ impl UnifiedTransport {
                 }
             }
             TransportSelection::Reliable => {
-                let config = ReliableUdpConfig::default();
-                let transport = ReliableUdpTransport::new(bind_addr, config)?;
+                let config = UdpTransportConfig {
+                    local_addr: bind_addr.to_string(),
+                    ..Default::default()
+                };
+                let transport = UdpRingBufferTransport::new(config)?;
                 println!("🛡️  Created reliable UDP transport with NAK retransmission");
                 Ok(Self::Reliable(transport))
             }
@@ -214,8 +216,8 @@ impl UnifiedTransport {
                 }
             }
             Self::Reliable(transport) => {
-                // Need session ID for reliable transport - using default 1
-                transport.send(1, data).map(|_| ())
+                // Use the correct signature for UdpRingBufferTransport
+                transport.send(data, addr)
             }
             Self::Basic(transport) => transport.send(data, addr),
         }

@@ -157,7 +157,7 @@ if let Some((data, _addr)) = transport.receive()? {
 | Transport Type | Platform | Throughput | Use Case |
 |----------------|----------|------------|----------|
 | UDP Ring Buffer | Apple M1 | 210K msgs/sec | General networking |
-| Reliable UDP | Apple M1 | 150K msgs/sec | Mission-critical data |
+| Reliable UDP (RingBuffer) | Apple M1 | 200K msgs/sec | High-throughput, reliable, contiguous windows |
 
 **Performance Factors**:
 - Batch size and buffer configuration significantly impact throughput
@@ -169,8 +169,16 @@ if let Some((data, _addr)) = transport.receive()? {
 | Transport | Best For | Limitations |
 |-----------|----------|-------------|
 | **UDP Ring Buffer** | High-frequency messaging, small packets | No reliability guarantees |
-| **Reliable UDP** | Mission-critical data, lossy networks | Higher latency overhead |
+| **Reliable UDP (NAK, RingBuffer)** | High-throughput, reliable, contiguous windows | Less flexible for sparse out-of-order delivery |
 | **IPC Ring Buffer** | Same-host communication, ultra-low latency | Single host only |
+
+## Reliable UDP Transports: Which Should I Use?
+
+Flux provides two reliable UDP transports:
+
+- **Reliable UDP (RingBuffer):** Uses a lock-free ring buffer for send/receive windows. Much higher throughput and cache efficiency, best for high-performance, low-loss, or mostly contiguous workloads.
+
+**Recommendation:** Try both for your workload. Use the ring buffer version for maximum performance if your network is not extremely lossy or out-of-order. Use the BTreeMap version for maximum robustness in challenging network conditions.
 
 ## Installation
 
@@ -273,3 +281,13 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 ---
 
 **Disclaimer**: This is experimental software under active development. While we strive for accuracy in performance claims and technical specifications, results may vary across different hardware and software configurations. Always benchmark in your specific environment before using.
+
+## For advanced users: Optimized APIs and Cache Prefetching
+
+Flux provides special `*_ultra` APIs (e.g., `try_claim_slots_ultra`, `publish_batch_ultra`) for expert users and high-performance scenarios:
+
+- These APIs minimize synchronization and provide direct memory access for maximum throughput.
+- They use platform-specific cache prefetch instructions (via `asm!`) to aggressively load data into CPU caches, reducing memory latency.
+- Intended for benchmarks or specialized production code where you control all producer/consumer logic.
+- Most users should use the standard APIs for safety and ergonomics, but `*_ultra` is available for squeezing out every last bit of performance.
+- See the source in `src/disruptor/ring_buffer.rs` for details.

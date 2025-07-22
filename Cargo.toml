@@ -112,6 +112,10 @@ name = "bench_transport_comparison"
 path = "benches/bench_transport_comparison.rs"
 
 [[bin]]
+name = "bench_ringbuffer_comparison"
+path = "benches/bench_ringbuffer_comparison.rs"
+
+[[bin]]
 name = "bench_realistic_measurement"
 path = "benches/bench_realistic_measurement.rs"
 
@@ -130,8 +134,6 @@ path = "examples/example_udp_transport.rs"
 [[example]]
 name = "example_minimal_raw"
 path = "examples/example_minimal_raw.rs"
-
-
 
 [[example]]
 name = "example_linux_optimized"

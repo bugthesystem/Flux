@@ -51,7 +51,7 @@ fn run_server(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
         non_blocking: false, // Use blocking for server
         socket_timeout_ms: 100,
     };
-    let mut transport = UdpRingBufferTransport::new(config)?;
+    let mut transport = UdpRingBufferTransport::auto(config)?;
     transport.start()?;
 
     println!("Server listening on {}", addr);
@@ -106,7 +106,7 @@ fn run_client(local_addr: &str, server_addr: &str) -> Result<(), Box<dyn std::er
         non_blocking: false, // Use blocking for client
         socket_timeout_ms: 100,
     };
-    let mut transport = UdpRingBufferTransport::new(config)?;
+    let mut transport = UdpRingBufferTransport::auto(config)?;
     transport.start()?;
 
     let server_addr: SocketAddr = server_addr.parse()?;
@@ -164,7 +164,7 @@ mod tests {
             non_blocking: true,
             socket_timeout_ms: 50,
         };
-        let transport = UdpRingBufferTransport::new(config);
+        let transport = UdpRingBufferTransport::auto(config);
         assert!(transport.is_ok());
     }
 

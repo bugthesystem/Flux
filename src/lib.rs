@@ -17,7 +17,7 @@ pub use transport::{
     UdpTransportConfig,
     TransportConfig,
     TransportMetrics,
-    reliable_udp::{ ReliableUdpTransport, ReliableUdpConfig },
+    reliable_udp::ReliableUdpRingBufferTransport,
 };
 
 /// Version information

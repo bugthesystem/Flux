@@ -15,8 +15,137 @@ use std::time::Duration;
 
 use crate::error::{ Result, FluxError };
 use crate::disruptor::{ RingBuffer, RingBufferConfig };
+use crate::disruptor::ring_buffer::MappedRingBuffer;
+#[cfg(all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages")))]
+use crate::disruptor::ring_buffer_linux::LinuxRingBuffer;
 
-/// Transport configuration for reliable UDP
+// Trait for common ring buffer operations
+pub trait RingBufferOps: Send + Sync {
+    fn try_claim_slots(
+        &mut self,
+        count: usize
+    ) -> Option<(u64, &mut [crate::disruptor::MessageSlot])>;
+    fn try_consume_batch(
+        &self,
+        consumer_id: usize,
+        max_count: usize
+    ) -> Vec<&crate::disruptor::MessageSlot>;
+    fn publish_batch(&self, start_seq: u64, count: usize);
+}
+
+impl RingBufferOps for RingBuffer {
+    fn try_claim_slots(
+        &mut self,
+        count: usize
+    ) -> Option<(u64, &mut [crate::disruptor::MessageSlot])> {
+        self.try_claim_slots(count)
+    }
+    fn try_consume_batch(
+        &self,
+        consumer_id: usize,
+        max_count: usize
+    ) -> Vec<&crate::disruptor::MessageSlot> {
+        self.try_consume_batch(consumer_id, max_count)
+    }
+    fn publish_batch(&self, start_seq: u64, count: usize) {
+        self.publish_batch(start_seq, count)
+    }
+}
+
+impl RingBufferOps for MappedRingBuffer {
+    fn try_claim_slots(
+        &mut self,
+        count: usize
+    ) -> Option<(u64, &mut [crate::disruptor::MessageSlot])> {
+        self.try_claim_slots(count)
+    }
+    fn try_consume_batch(
+        &self,
+        consumer_id: usize,
+        max_count: usize
+    ) -> Vec<&crate::disruptor::MessageSlot> {
+        let slice = self.try_consume_batch(consumer_id, max_count);
+        slice.iter().collect()
+    }
+    fn publish_batch(&self, start_seq: u64, count: usize) {
+        self.publish_batch(start_seq, count)
+    }
+}
+
+#[cfg(all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages")))]
+impl RingBufferOps for LinuxRingBuffer {
+    fn try_claim_slots(
+        &mut self,
+        count: usize
+    ) -> Option<(u64, &mut [crate::disruptor::MessageSlot])> {
+        self.try_claim_slots(count)
+    }
+    fn try_consume_batch(
+        &self,
+        consumer_id: usize,
+        max_count: usize
+    ) -> Vec<&crate::disruptor::MessageSlot> {
+        let slice = self.try_consume_batch(consumer_id, max_count);
+        slice.iter().collect()
+    }
+    fn publish_batch(&self, start_seq: u64, count: usize) {
+        self.publish_batch(start_seq, count)
+    }
+}
+
+// Enum for platform-selected ring buffer
+pub enum PlatformRingBuffer {
+    Default(RingBuffer),
+    Mapped(MappedRingBuffer),
+    #[cfg(
+        all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages"))
+    )] Linux(LinuxRingBuffer),
+}
+
+impl PlatformRingBuffer {
+    pub fn as_ops_mut(&mut self) -> &mut dyn RingBufferOps {
+        match self {
+            PlatformRingBuffer::Default(ref mut b) => b,
+            PlatformRingBuffer::Mapped(ref mut b) => b,
+            #[cfg(
+                all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages"))
+            )]
+            PlatformRingBuffer::Linux(ref mut b) => b,
+        }
+    }
+    pub fn as_ops(&self) -> &dyn RingBufferOps {
+        match self {
+            PlatformRingBuffer::Default(ref b) => b,
+            PlatformRingBuffer::Mapped(ref b) => b,
+            #[cfg(
+                all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages"))
+            )]
+            PlatformRingBuffer::Linux(ref b) => b,
+        }
+    }
+}
+
+// Platform auto-selection for ring buffer
+fn auto_ring_buffer(config: RingBufferConfig) -> Result<PlatformRingBuffer> {
+    #[cfg(all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages")))]
+    {
+        if config.use_huge_pages || config.numa_node.is_some() {
+            if let Ok(b) = LinuxRingBuffer::new(config.clone()) {
+                return Ok(PlatformRingBuffer::Linux(b));
+            }
+        }
+    }
+    #[cfg(unix)]
+    {
+        if let Ok(b) = MappedRingBuffer::new_mapped(config.clone()) {
+            return Ok(PlatformRingBuffer::Mapped(b));
+        }
+    }
+    // Fallback
+    Ok(PlatformRingBuffer::Default(RingBuffer::new(config)?))
+}
+
+// Transport configuration for reliable UDP
 #[derive(Debug, Clone)]
 pub struct TransportConfig {
     /// Local address to bind to
@@ -63,7 +192,7 @@ impl Default for TransportConfig {
 
 // NOTE: Message header functionality moved to reliable_udp::ReliableUdpHeader
 
-/// Transport metrics for monitoring
+// Transport metrics for monitoring
 #[derive(Debug, Clone)]
 pub struct TransportMetrics {
     /// Messages sent
@@ -108,22 +237,22 @@ impl Default for UdpTransportConfig {
     }
 }
 
-/// UDP transport with ring buffer integration (unified, high-performance)
+// UDP transport with ring buffer integration (unified, high-performance)
 pub struct UdpRingBufferTransport {
     /// UDP socket
     socket: UdpSocket,
     /// Configuration
     config: UdpTransportConfig,
-    /// Send ring buffer
-    send_buffer: RingBuffer,
-    /// Receive ring buffer
-    recv_buffer: RingBuffer,
+    /// Send ring buffer (platform auto-selected)
+    send_buffer: PlatformRingBuffer,
+    /// Receive ring buffer (platform auto-selected)
+    recv_buffer: PlatformRingBuffer,
     /// Running flag
     running: Arc<AtomicU64>,
 }
 
 impl UdpRingBufferTransport {
-    /// Create a new UDP transport with optimized socket settings
+    /// Create a new UDP transport with optimized socket settings (default: RingBuffer)
     pub fn new(config: UdpTransportConfig) -> Result<Self> {
         let socket = UdpSocket::bind(&config.local_addr)?;
 
@@ -180,8 +309,77 @@ impl UdpRingBufferTransport {
             .with_optimal_batch_size(config.batch_size)
             .with_wait_strategy(crate::disruptor::WaitStrategyType::BusySpin);
 
-        let send_buffer = RingBuffer::new(ring_config.clone())?;
-        let recv_buffer = RingBuffer::new(ring_config.clone())?;
+        let send_buffer = PlatformRingBuffer::Default(RingBuffer::new(ring_config.clone())?);
+        let recv_buffer = PlatformRingBuffer::Default(RingBuffer::new(ring_config.clone())?);
+
+        Ok(Self {
+            socket,
+            config,
+            send_buffer,
+            recv_buffer,
+            running: Arc::new(AtomicU64::new(0)),
+        })
+    }
+
+    /// Create a new UDP transport with platform auto-selected ring buffer
+    pub fn auto(config: UdpTransportConfig) -> Result<Self> {
+        let socket = UdpSocket::bind(&config.local_addr)?;
+
+        // Optimize socket settings for performance
+        if config.non_blocking {
+            socket.set_nonblocking(true)?;
+        } else {
+            socket.set_read_timeout(Some(Duration::from_millis(config.socket_timeout_ms)))?;
+        }
+
+        // Set larger socket buffers for high-throughput scenarios (32MB each)
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let fd = socket.as_raw_fd();
+            let buffer_size = 32 * 1024 * 1024i32; // 32MB
+
+            unsafe {
+                // Set send buffer size
+                libc::setsockopt(
+                    fd,
+                    libc::SOL_SOCKET,
+                    libc::SO_SNDBUF,
+                    &buffer_size as *const i32 as *const libc::c_void,
+                    std::mem::size_of::<i32>() as libc::socklen_t
+                );
+                // Set receive buffer size
+                libc::setsockopt(
+                    fd,
+                    libc::SOL_SOCKET,
+                    libc::SO_RCVBUF,
+                    &buffer_size as *const i32 as *const libc::c_void,
+                    std::mem::size_of::<i32>() as libc::socklen_t
+                );
+                // Disable Nagle's algorithm for lower latency
+                let no_delay = 1i32;
+                libc::setsockopt(
+                    fd,
+                    libc::IPPROTO_TCP,
+                    libc::TCP_NODELAY,
+                    &no_delay as *const i32 as *const libc::c_void,
+                    std::mem::size_of::<i32>() as libc::socklen_t
+                );
+            }
+        }
+
+        // Enable broadcast if available
+        if let Err(e) = socket.set_broadcast(true) {
+            eprintln!("Warning: Could not enable broadcast: {}", e);
+        }
+
+        let ring_config = RingBufferConfig::new(config.buffer_size)?
+            .with_consumers(1)?
+            .with_optimal_batch_size(config.batch_size)
+            .with_wait_strategy(crate::disruptor::WaitStrategyType::BusySpin);
+
+        let send_buffer = auto_ring_buffer(ring_config.clone())?;
+        let recv_buffer = auto_ring_buffer(ring_config.clone())?;
 
         Ok(Self {
             socket,
@@ -249,18 +447,18 @@ impl UdpRingBufferTransport {
         &self.socket
     }
 
-    /// Get the send ring buffer
-    pub fn send_buffer(&self) -> &RingBuffer {
-        &self.send_buffer
+    /// Get the send ring buffer (as trait object)
+    pub fn send_buffer(&self) -> &dyn RingBufferOps {
+        self.send_buffer.as_ops()
     }
 
-    /// Get the receive ring buffer
-    pub fn recv_buffer(&self) -> &RingBuffer {
-        &self.recv_buffer
+    /// Get the receive ring buffer (as trait object)
+    pub fn recv_buffer(&self) -> &dyn RingBufferOps {
+        self.recv_buffer.as_ops()
     }
 }
 
-/// Performance statistics for high-performance UDP transport
+// Performance statistics for high-performance UDP transport
 #[derive(Debug)]
 pub struct HighPerformanceStats {
     pub messages_sent: u64,
