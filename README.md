@@ -187,15 +187,6 @@ if let Some((data, _addr)) = transport.receive()? {
 
 See `HybridWindow` in the codebase for implementation details.
 
-### Reliable UDP Transports: Which Should I Use?
-
-Flux provides two reliable UDP transports:
-
-- **Reliable UDP (RingBuffer):** Uses a lock-free ring buffer for send/receive windows. Much higher throughput and cache efficiency, best for high-performance, low-loss, or mostly contiguous workloads.
-
-**Recommendation:** Try both for your workload. Use the ring buffer version for maximum performance if your network is not extremely lossy or out-of-order. Use the BTreeMap version for maximum robustness in challenging network conditions.
-
-
 ## Installation
 
 Add to your `Cargo.toml`:
@@ -263,7 +254,7 @@ cargo run --release --features linux_optimized --bin bench_linux_numa
 
 ### Current Development (Q3 2025)
 - [x] [Linux] **(In Progress)** io_uring zero-copy integration
-- [ ] zero or optimized copy improvements
+- [x] **(In Progress)** zero or optimized copy improvements
 - [ ] Stabilize reliable UDP implementation
 - [ ] Windows platform support
 - [ ] Comprehensive error handling and monitoring
