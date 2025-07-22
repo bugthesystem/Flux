@@ -20,10 +20,9 @@ impl Default for ReliabilityConfig {
 
 /// Forward error correction encoder
 ///
-/// Implements basic XOR-based forward error correction with configurable data and parity shards.
-/// This is a working implementation suitable for demonstration and basic error correction needs.
+/// Implements basic XOR-based forward error correction with 
+/// configurable data and parity shards basic error correction needs.
 ///
-/// **Current Implementation**: Simple XOR-based parity generation
 /// **Production Recommendation**: For critical applications, consider Reed-Solomon codes
 /// or libraries like `reed-solomon-erasure` for better error correction capabilities.
 pub struct FecEncoder {
