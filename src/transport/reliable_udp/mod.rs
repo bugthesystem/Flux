@@ -10,13 +10,11 @@
 
 use std::net::{ SocketAddr, UdpSocket };
 use std::time::{ Instant, SystemTime, UNIX_EPOCH };
-use crate::disruptor::{ RingBufferConfig, MessageSlot, RingBuffer, RingBufferEntry };
+use crate::disruptor::{ RingBufferConfig, RingBuffer, RingBufferEntry };
 use crate::transport::reliable_udp::reliable_window_ring_buffer::HybridWindow;
 use crc32fast::Hasher;
-// Remove: use slab::Slab;
 
 mod reliable_window_ring_buffer;
-use self::reliable_window_ring_buffer::ReliableWindowRingBuffer;
 
 /// Message types for reliable UDP protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

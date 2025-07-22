@@ -15,8 +15,8 @@ use flux::{
     constants,
     transport::{ UdpRingBufferTransport, UdpTransportConfig },
     utils::pin_to_cpu,
+    transport::reliable_udp::ReliableUdpRingBufferTransport,
 };
-use flux::transport::reliable_udp::ReliableUdpRingBufferTransport;
 
 /// Test configuration for transport benchmarks
 #[derive(Clone)]
