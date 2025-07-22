@@ -1,4 +1,4 @@
-//! Simplified CPU utilities without problematic dependencies
+//! Simplified CPU utilities
 
 use crate::error::{ Result, FluxError };
 use std::thread;
@@ -28,7 +28,7 @@ pub fn get_physical_cpu_count() -> usize {
 
 /// Set CPU affinity for the current thread
 ///
-/// ## Reality Check
+/// ## Support Check
 /// - **Apple Silicon (M1/M2)**: NOT supported (returns error)
 /// - **Intel Macs**: Limited affinity hints only (not guaranteed)
 /// - **Linux**: Real CPU binding (sched_setaffinity)
