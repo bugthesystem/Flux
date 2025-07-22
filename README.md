@@ -172,14 +172,6 @@ if let Some((data, _addr)) = transport.receive()? {
 | **Reliable UDP (NAK, RingBuffer)** | High-throughput, reliable, contiguous windows | Less flexible for sparse out-of-order delivery |
 | **IPC Ring Buffer** | Same-host communication, ultra-low latency | Single host only |
 
-## Reliable UDP Transports: Which Should I Use?
-
-Flux provides two reliable UDP transports:
-
-- **Reliable UDP (RingBuffer):** Uses a lock-free ring buffer for send/receive windows. Much higher throughput and cache efficiency, best for high-performance, low-loss, or mostly contiguous workloads.
-
-**Recommendation:** Try both for your workload. Use the ring buffer version for maximum performance if your network is not extremely lossy or out-of-order. Use the BTreeMap version for maximum robustness in challenging network conditions.
-
 ## Installation
 
 Add to your `Cargo.toml`:
