@@ -36,7 +36,7 @@ pub fn get_physical_cpu_count() -> usize {
 pub fn set_cpu_affinity(cpu_id: usize) -> Result<()> {
     #[cfg(target_os = "macos")]
     {
-        use crate::utils::macos_optimizations::ThreadAffinity;
+        use crate::optimizations::macos_optimizations::ThreadAffinity;
         ThreadAffinity::set_thread_affinity(cpu_id)
     }
 
@@ -102,7 +102,7 @@ pub fn set_cpu_affinity(cpu_id: usize) -> Result<()> {
 pub fn is_thread_affinity_supported() -> bool {
     #[cfg(target_os = "macos")]
     {
-        use crate::utils::macos_optimizations::ThreadAffinity;
+        use crate::optimizations::macos_optimizations::ThreadAffinity;
         ThreadAffinity::is_supported()
     }
 
@@ -121,7 +121,7 @@ pub fn is_thread_affinity_supported() -> bool {
 pub fn get_thread_affinity_info() -> String {
     #[cfg(target_os = "macos")]
     {
-        use crate::utils::macos_optimizations::ThreadAffinity;
+        use crate::optimizations::macos_optimizations::ThreadAffinity;
         ThreadAffinity::get_affinity_info()
     }
 

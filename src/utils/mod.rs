@@ -10,9 +10,6 @@ pub mod time;
 pub mod checksum;
 pub mod numa;
 
-#[cfg(target_os = "macos")]
-pub mod macos_optimizations;
-
 #[cfg(
     all(
         target_os = "linux",

@@ -96,8 +96,8 @@ name = "bench_extreme"
 path = "benches/bench_extreme.rs"
 
 [[bin]]
-name = "bench_macos_ultra_optimized"
-path = "benches/bench_macos_ultra_optimized.rs"
+name = "bench_macos_optimized"
+path = "benches/bench_macos_optimized.rs"
 
 [[bin]]
 name = "bench_profile_analysis"

@@ -5,6 +5,9 @@ pub mod advanced_simd;
 
 pub use advanced_simd::{ SimdOptimizer, SimdMemoryOps };
 
+#[cfg(target_os = "macos")]
+pub mod macos_optimizations;
+
 /// Performance optimization utilities
 pub mod utils {
     use super::*;

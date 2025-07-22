@@ -139,7 +139,7 @@ export MallocNanoZone=0        # Alternative name
 sudo nice -n -20 ./target/release/your_app
 
 # Or use built-in QoS optimization (recommended)
-cargo run --release --bin bench_macos_ultra_optimized
+cargo run --release --bin bench_macos_optimized
 ```
 
 ## Performance Characteristics
