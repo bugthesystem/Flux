@@ -20,7 +20,6 @@ Flux is a high-performance message transport library for Rust that implements pa
 **Transport Layer**
 - Basic UDP transport for general networking
 - Reliable UDP with NAK-based retransmission and optional forward error correction
-- Inter-process communication via shared memory
 - ✅ **(In Progress)** Kernel bypass zero-copy with io_uring on Linux
 
 **Platform Optimizations**
