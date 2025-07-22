@@ -15,10 +15,8 @@ use std::net::SocketAddr;
 use flux::{
     constants,
     transport::{
-        BasicUdpTransport,
-        BasicUdpConfig,
-        HighPerformanceUdpTransport,
-        optimized_copy::OptimizedCopyUdpTransport,
+        UdpRingBufferTransport,
+        UdpTransportConfig,
         reliable_udp::{ ReliableUdpTransport, ReliableUdpConfig },
     },
     utils::pin_to_cpu,
@@ -91,11 +89,11 @@ impl TransportBenchmarkResult {
 fn benchmark_basic_udp(
     config: &TransportTestConfig
 ) -> Result<TransportBenchmarkResult, Box<dyn std::error::Error>> {
-    println!("🔷 Testing Basic UDP Transport...");
+    println!("🔷 Testing UDP Ring Buffer Transport (Basic Mode)...");
 
-    let mut transport = BasicUdpTransport::new(BasicUdpConfig {
+    let mut transport = UdpRingBufferTransport::new(UdpTransportConfig {
         local_addr: config.bind_addr.to_string(),
-        buffer_size: config.message_count,
+        buffer_size: 1_048_576, // Power of two for ring buffer
         batch_size: 64,
         non_blocking: true,
         socket_timeout_ms: 100,
@@ -146,82 +144,6 @@ fn benchmark_basic_udp(
         } else {
             0.0
         },
-    })
-}
-
-/// Benchmark Optimized Copy UDP Transport
-fn benchmark_optimized_copy_udp(
-    config: &TransportTestConfig
-) -> Result<TransportBenchmarkResult, Box<dyn std::error::Error>> {
-    println!("🔶 Testing Optimized Copy UDP Transport...");
-
-    let transport = OptimizedCopyUdpTransport::new(1000, 4096, 64)?;
-
-    // Create test message
-    let test_message = vec![0xBB; config.message_size];
-
-    let start_time = Instant::now();
-    let mut messages_sent = 0;
-    let mut total_latency_us = 0.0;
-
-    // Send messages with optimized buffer management
-    for i in 0..config.message_count {
-        let send_start = Instant::now();
-
-        // Use scatter-gather I/O for better performance (Linux only)
-        #[cfg(target_os = "linux")]
-        {
-            match transport.send_scatter_gather(&[], &test_message, config.target_addr) {
-                Ok(_) => {
-                    messages_sent += 1;
-                    total_latency_us += send_start.elapsed().as_micros() as f64;
-                }
-                Err(_) => {}
-            }
-        }
-
-        #[cfg(not(target_os = "linux"))]
-        {
-            // Use send_optimized method on non-Linux platforms
-            if let Some(mut buffer) = transport.get_send_buffer() {
-                // Copy message data into buffer
-                let data_slice = buffer.data_mut();
-                let copy_len = test_message.len().min(data_slice.len());
-                data_slice[..copy_len].copy_from_slice(&test_message[..copy_len]);
-                buffer.set_data_len(copy_len);
-
-                match transport.send_optimized(buffer, config.target_addr) {
-                    Ok(_) => {
-                        messages_sent += 1;
-                        total_latency_us += send_start.elapsed().as_micros() as f64;
-                    }
-                    Err(_) => {}
-                }
-            }
-        }
-
-        // Break if duration exceeded
-        if start_time.elapsed().as_secs() >= config.duration_secs {
-            break;
-        }
-    }
-
-    let duration = start_time.elapsed();
-    let throughput = (messages_sent as f64) / duration.as_secs_f64();
-    let avg_latency = if messages_sent > 0 {
-        total_latency_us / (messages_sent as f64)
-    } else {
-        0.0
-    };
-
-    Ok(TransportBenchmarkResult {
-        transport_name: "Optimized Copy UDP".to_string(),
-        messages_sent,
-        messages_received: messages_sent, // Assume all received
-        duration,
-        throughput_mps: throughput,
-        avg_latency_us: avg_latency,
-        success_rate: (messages_sent as f64) / (config.message_count as f64),
     })
 }
 
@@ -369,7 +291,7 @@ fn benchmark_high_performance_udp(
     use std::sync::{ Arc, atomic::{ AtomicBool, Ordering }, atomic::AtomicUsize };
     use std::thread;
 
-    println!("🚀 Testing High-Performance UDP Transport (End-to-End, true receive path)...");
+    println!("🚀 Testing UDP Ring Buffer Transport (High-Performance Mode, End-to-End)...");
 
     let receiver_addr = "127.0.0.1:9999";
     let receiver_done = Arc::new(AtomicBool::new(false));
@@ -379,20 +301,28 @@ fn benchmark_high_performance_udp(
     let receiver_done_clone = receiver_done.clone();
     let received_count_clone = received_count.clone();
     let receiver = thread::spawn(move || {
-        let mut receiver_transport = HighPerformanceUdpTransport::new(
-            receiver_addr,
-            10000
-        ).unwrap();
+        let mut receiver_transport = UdpRingBufferTransport::new(UdpTransportConfig {
+            local_addr: receiver_addr.to_string(),
+            buffer_size: 1_048_576, // Power of two for ring buffer
+            batch_size: 64,
+            non_blocking: true,
+            socket_timeout_ms: 100,
+        }).unwrap();
         while !receiver_done_clone.load(Ordering::Relaxed) {
-            if let Ok(Some((_buf, _addr))) = receiver_transport.receive_fast() {
+            if let Ok(Some((_buf, _addr))) = receiver_transport.receive() {
                 received_count_clone.fetch_add(1, Ordering::Relaxed);
             }
         }
-        receiver_transport.get_stats_with_efficiency()
     });
 
     // Sender (main thread)
-    let mut sender_transport = HighPerformanceUdpTransport::new("127.0.0.1:0", 10000)?;
+    let mut sender_transport = UdpRingBufferTransport::new(UdpTransportConfig {
+        local_addr: "127.0.0.1:0".to_string(),
+        buffer_size: 1_048_576, // Power of two for ring buffer
+        batch_size: 64,
+        non_blocking: true,
+        socket_timeout_ms: 100,
+    })?;
     let test_message = vec![0xCC; config.message_size];
     let start_time = Instant::now();
     let mut messages_sent = 0;
@@ -400,7 +330,7 @@ fn benchmark_high_performance_udp(
 
     for _i in 0..config.message_count {
         let send_start = Instant::now();
-        match sender_transport.send_fast(&test_message, receiver_addr.parse().unwrap()) {
+        match sender_transport.send(&test_message, receiver_addr.parse().unwrap()) {
             Ok(_) => {
                 messages_sent += 1;
                 total_latency_us += send_start.elapsed().as_micros() as f64;
@@ -414,7 +344,7 @@ fn benchmark_high_performance_udp(
 
     // Signal receiver to stop and join
     receiver_done.store(true, Ordering::Relaxed);
-    let receiver_stats = receiver.join().unwrap();
+    let _ = receiver.join();
     let messages_received = received_count.load(Ordering::Relaxed);
 
     let duration = start_time.elapsed();
@@ -425,14 +355,8 @@ fn benchmark_high_performance_udp(
         0.0
     };
 
-    println!("📊 High-Performance UDP Statistics (Receiver):");
-    println!("  Pool efficiency: {:.1}%", receiver_stats.pool_efficiency * 100.0);
-    println!("  Pool hits: {}", receiver_stats.pool_hits);
-    println!("  Pool misses: {}", receiver_stats.pool_misses);
-    println!("  Buffer pool size: {}", receiver_stats.buffer_pool_size);
-
     Ok(TransportBenchmarkResult {
-        transport_name: "High-Performance UDP (End-to-End)".to_string(),
+        transport_name: "UDP Ring Buffer Transport (High-Performance End-to-End)".to_string(),
         messages_sent,
         messages_received,
         duration,
@@ -485,11 +409,6 @@ fn run_transport_comparison() -> Result<(), Box<dyn std::error::Error>> {
     match benchmark_high_performance_udp(&config) {
         Ok(result) => results.push(result),
         Err(e) => println!("❌ High-Performance UDP benchmark failed: {}", e),
-    }
-
-    match benchmark_optimized_copy_udp(&config) {
-        Ok(result) => results.push(result),
-        Err(e) => println!("❌ Optimized Copy UDP benchmark failed: {}", e),
     }
 
     match benchmark_reliable_udp(&config) {

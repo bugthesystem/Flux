@@ -19,9 +19,8 @@ use crate::error::{ Result, FluxError };
 use crate::transport::{
     kernel_bypass_zero_copy::ZeroCopyTransport,
     reliable_udp::{ ReliableUdpTransport, ReliableUdpConfig },
-    optimized_copy::OptimizedCopyUdpTransport,
-    BasicUdpTransport,
-    BasicUdpConfig,
+    UdpRingBufferTransport,
+    UdpTransportConfig,
 };
 
 /// Performance tier selection for transport
@@ -67,13 +66,11 @@ impl Default for TransportRequirements {
 /// Unified transport that automatically selects the best implementation
 pub enum UnifiedTransport {
     /// True zero-copy transport (Linux only)
-    ZeroCopy(ZeroCopyTransport),
+    UltraLowLatency(ZeroCopyTransport),
     /// Reliable UDP with NAK retransmission
     Reliable(ReliableUdpTransport),
-    /// Optimized copying with SIMD
-    Optimized(OptimizedCopyUdpTransport),
     /// Basic UDP transport
-    Basic(BasicUdpTransport),
+    Basic(UdpRingBufferTransport),
 }
 
 impl UnifiedTransport {
@@ -97,7 +94,7 @@ impl UnifiedTransport {
                     let config = KernelBypassConfig::default();
                     let transport = ZeroCopyTransport::new(config)?;
                     println!("🚀 Created true zero-copy transport with io_uring");
-                    Ok(Self::ZeroCopy(transport))
+                    Ok(Self::UltraLowLatency(transport))
                 }
                 #[cfg(not(target_os = "linux"))]
                 {
@@ -113,11 +110,11 @@ impl UnifiedTransport {
             }
             TransportSelection::Optimized => { Self::create_optimized_fallback() }
             TransportSelection::Basic => {
-                let config = BasicUdpConfig {
+                let config = UdpTransportConfig {
                     local_addr: bind_addr.to_string(),
                     ..Default::default()
                 };
-                let transport = BasicUdpTransport::new(config)?;
+                let transport = UdpRingBufferTransport::new(config)?;
                 println!("📦 Created basic UDP transport");
                 Ok(Self::Basic(transport))
             }
@@ -126,9 +123,12 @@ impl UnifiedTransport {
 
     /// Create optimized copy transport (common fallback)
     fn create_optimized_fallback() -> Result<Self> {
-        let transport = OptimizedCopyUdpTransport::new(1000, 4096, 64)?;
+        let transport = UdpRingBufferTransport::new(UdpTransportConfig {
+            local_addr: "127.0.0.1:0".to_string(),
+            ..Default::default()
+        })?;
         println!("⚡ Created optimized copy transport with SIMD acceleration");
-        Ok(Self::Optimized(transport))
+        Ok(Self::Basic(transport))
     }
 
     /// Select the best implementation
@@ -168,7 +168,7 @@ impl UnifiedTransport {
     /// Get performance characteristics of current transport
     pub fn get_performance_info(&self) -> TransportPerformance {
         match self {
-            Self::ZeroCopy(_) =>
+            Self::UltraLowLatency(_) =>
                 TransportPerformance {
                     name: "True Zero-Copy".to_string(),
                     estimated_throughput: 10_000_000..20_000_000,
@@ -186,15 +186,6 @@ impl UnifiedTransport {
                     platform_specific: false,
                     reliability: true,
                 },
-            Self::Optimized(_) =>
-                TransportPerformance {
-                    name: "SIMD-Optimized Copy".to_string(),
-                    estimated_throughput: 1_500_000..3_000_000,
-                    estimated_latency_ns: 1_000..5_000,
-                    memory_allocations_per_msg: 0, // Pre-allocated pool
-                    platform_specific: false,
-                    reliability: false,
-                },
             Self::Basic(_) =>
                 TransportPerformance {
                     name: "Basic UDP".to_string(),
@@ -210,7 +201,7 @@ impl UnifiedTransport {
     /// Send data using the selected transport
     pub fn send(&mut self, data: &[u8], addr: SocketAddr) -> Result<()> {
         match self {
-            Self::ZeroCopy(transport) => {
+            Self::UltraLowLatency(transport) => {
                 // For zero-copy, we need to get a buffer and write to it
                 if let Some(slot_ptr) = transport.get_producer_buffer(1) {
                     unsafe {
@@ -225,17 +216,6 @@ impl UnifiedTransport {
             Self::Reliable(transport) => {
                 // Need session ID for reliable transport - using default 1
                 transport.send(1, data).map(|_| ())
-            }
-            Self::Optimized(transport) => {
-                if let Some(mut buffer) = transport.get_send_buffer() {
-                    let data_slice = buffer.data_mut();
-                    let copy_len = data.len().min(data_slice.len());
-                    data_slice[..copy_len].copy_from_slice(&data[..copy_len]);
-                    buffer.set_data_len(copy_len);
-                    transport.send_optimized(buffer, addr)
-                } else {
-                    Err(FluxError::config("No buffer available"))
-                }
             }
             Self::Basic(transport) => transport.send(data, addr),
         }

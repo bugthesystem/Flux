@@ -1,4 +1,4 @@
-use flux::{ BasicUdpTransport, BasicUdpConfig };
+use flux::{ UdpRingBufferTransport, UdpTransportConfig };
 use std::net::SocketAddr;
 use std::thread;
 use std::time::{ Duration, Instant };
@@ -44,14 +44,14 @@ fn run_server(addr: &str) -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting Flux UDP Server on {}", addr);
 
     // Create basic UDP transport
-    let config = BasicUdpConfig {
+    let config = UdpTransportConfig {
         local_addr: addr.to_string(),
         buffer_size: 4096,
         batch_size: 64,
         non_blocking: false, // Use blocking for server
         socket_timeout_ms: 100,
     };
-    let mut transport = BasicUdpTransport::new(config)?;
+    let mut transport = UdpRingBufferTransport::new(config)?;
     transport.start()?;
 
     println!("Server listening on {}", addr);
@@ -99,14 +99,14 @@ fn run_client(local_addr: &str, server_addr: &str) -> Result<(), Box<dyn std::er
     println!("Starting Flux UDP Client");
 
     // Create basic UDP transport
-    let config = BasicUdpConfig {
+    let config = UdpTransportConfig {
         local_addr: local_addr.to_string(),
         buffer_size: 4096,
         batch_size: 64,
         non_blocking: false, // Use blocking for client
         socket_timeout_ms: 100,
     };
-    let mut transport = BasicUdpTransport::new(config)?;
+    let mut transport = UdpRingBufferTransport::new(config)?;
     transport.start()?;
 
     let server_addr: SocketAddr = server_addr.parse()?;
@@ -157,14 +157,14 @@ mod tests {
 
     #[test]
     fn test_basic_udp_transport_creation() {
-        let config = BasicUdpConfig {
+        let config = UdpTransportConfig {
             local_addr: "127.0.0.1:0".to_string(),
             buffer_size: 1024,
             batch_size: 32,
             non_blocking: true,
             socket_timeout_ms: 50,
         };
-        let transport = BasicUdpTransport::new(config);
+        let transport = UdpRingBufferTransport::new(config);
         assert!(transport.is_ok());
     }
 

@@ -1,4 +1,4 @@
-//! VERIFIED HIGH-PERFORMANCE MULTI-THREADED BENCHMARK
+//! HIGH-PERFORMANCE MULTI-THREADED BENCHMARK WITH VALIDATIONS
 //!
 //! This benchmark targets maximum multi-threaded performance while ensuring:
 //! - Results are verified and not inflated

@@ -1,30 +1,22 @@
-//! EXTREME PERFORMANCE BENCHMARK
-//!
-//! This benchmark shows Flux's absolute maximum performance with:
-//! - Larger ring buffers (4M slots)
-//! - CPU cache prefetching
-//! - Optimized batch sizes
-//! - Zero syscall overhead
-//! - Perfect CPU utilization
-
 use std::time::{ Duration, Instant };
 use flux::{ disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType }, utils::pin_to_cpu };
+use flux::constants::EXTREME_BATCH_SIZE;
 
 /// Pre-allocated message variants for realistic workload
 static EXTREME_MSGS: &[&[u8]] = &[
-    b"SONIC_EXTREME_MSG_001_HIGH_FREQUENCY_TRADING_PAYLOAD_ULTRA_FAST_EXECUTION_0000000001",
-    b"SONIC_EXTREME_MSG_002_LOW_LATENCY_GAMING_PAYLOAD_REAL_TIME_MULTIPLAYER_0000000002",
-    b"SONIC_EXTREME_MSG_003_FINANCIAL_DATA_STREAM_PAYLOAD_MARKET_DATA_FEED_0000000003",
-    b"SONIC_EXTREME_MSG_004_IOT_SENSOR_DATA_PAYLOAD_REAL_TIME_MONITORING_0000000004",
-    b"SONIC_EXTREME_MSG_005_VIDEO_STREAMING_PAYLOAD_4K_CONTENT_DELIVERY_0000000005",
-    b"SONIC_EXTREME_MSG_006_AUTONOMOUS_VEHICLE_PAYLOAD_LIDAR_SENSOR_DATA_0000000006",
-    b"SONIC_EXTREME_MSG_007_CRYPTO_TRADING_PAYLOAD_ARBITRAGE_OPPORTUNITY_0000000007",
-    b"SONIC_EXTREME_MSG_008_DISTRIBUTED_COMPUTING_PAYLOAD_MAP_REDUCE_TASK_0000000008",
+    b"FLUX_EXTREME_MSG_001_HIGH_FREQUENCY_TRADING_PAYLOAD_ULTRA_FAST_EXECUTION_0000000001",
+    b"FLUX_EXTREME_MSG_002_LOW_LATENCY_GAMING_PAYLOAD_REAL_TIME_MULTIPLAYER_0000000002",
+    b"FLUX_EXTREME_MSG_003_FINANCIAL_DATA_STREAM_PAYLOAD_MARKET_DATA_FEED_0000000003",
+    b"FLUX_EXTREME_MSG_004_IOT_SENSOR_DATA_PAYLOAD_REAL_TIME_MONITORING_0000000004",
+    b"FLUX_EXTREME_MSG_005_VIDEO_STREAMING_PAYLOAD_4K_CONTENT_DELIVERY_0000000005",
+    b"FLUX_EXTREME_MSG_006_AUTONOMOUS_VEHICLE_PAYLOAD_LIDAR_SENSOR_DATA_0000000006",
+    b"FLUX_EXTREME_MSG_007_CRYPTO_TRADING_PAYLOAD_ARBITRAGE_OPPORTUNITY_0000000007",
+    b"FLUX_EXTREME_MSG_008_DISTRIBUTED_COMPUTING_PAYLOAD_MAP_REDUCE_TASK_0000000008",
 ];
 
 /// EXTREME single-threaded benchmark targeting high performance
 pub fn extreme_spsc_bench(duration_secs: u64) -> Result<f64, Box<dyn std::error::Error>> {
-    println!("🚀 EXTREME PERFORMANCE BENCHMARK - TARGET: 20M+ MSG/SEC");
+    println!("🚀 PERFORMANCE BENCHMARK - TARGET: 20M+ MSG/SEC");
     println!("=========================================================");
 
     // Extreme configuration for maximum throughput
@@ -48,14 +40,13 @@ pub fn extreme_spsc_bench(duration_secs: u64) -> Result<f64, Box<dyn std::error:
 
     let start_time = Instant::now();
     let target_duration = Duration::from_secs(duration_secs);
-    const EXTREME_BATCH_SIZE: usize = 2000;
 
     let mut total_sent = 0u64;
     let mut total_consumed = 0u64;
     let mut batch_count = 0;
     let mut msg_index = 0;
 
-    println!("⏱️  Running EXTREME benchmark for {} seconds...", duration_secs);
+    println!("⏱️  Running benchmark for {} seconds...", duration_secs);
     println!("🔥 System requirements: 4+ CPU cores, 8GB+ RAM, CPU isolation");
 
     while start_time.elapsed() < target_duration {
@@ -87,7 +78,7 @@ pub fn extreme_spsc_bench(duration_secs: u64) -> Result<f64, Box<dyn std::error:
             let elapsed = start_time.elapsed().as_secs_f64();
             let throughput = (total_sent as f64) / elapsed;
             if throughput > 20_000_000.0 {
-                println!("🚀 EXTREME: {:.1}M msg/s!", throughput / 1_000_000.0);
+                println!("🚀 {:.1}M msg/s!", throughput / 1_000_000.0);
             }
         }
     }
@@ -95,7 +86,7 @@ pub fn extreme_spsc_bench(duration_secs: u64) -> Result<f64, Box<dyn std::error:
     let duration = start_time.elapsed();
     let final_throughput = (total_sent as f64) / duration.as_secs_f64();
 
-    println!("\n🏆 EXTREME BENCHMARK RESULTS:");
+    println!("\n🏆 BENCHMARK RESULTS:");
     println!("=============================");
     println!("📊 Messages: {}", total_sent);
     println!("📊 Duration: {:.3} seconds", duration.as_secs_f64());
@@ -109,9 +100,9 @@ pub fn extreme_spsc_bench(duration_secs: u64) -> Result<f64, Box<dyn std::error:
     Ok(final_throughput)
 }
 
-/// EXTREME multi-producer benchmark
+/// Multi-producer benchmark
 pub fn extreme_mpsc_bench(duration_secs: u64) -> Result<f64, Box<dyn std::error::Error>> {
-    println!("\n🚀 EXTREME MULTI-PRODUCER BENCHMARK");
+    println!("\n🚀 MULTI-PRODUCER BENCHMARK");
     println!("====================================");
     println!("🎯 Target: 25M+ messages/second with realistic load");
 
@@ -121,7 +112,7 @@ pub fn extreme_mpsc_bench(duration_secs: u64) -> Result<f64, Box<dyn std::error:
     // Multi-producer typically achieves 70-80% of single-threaded due to contention
     let estimated_mp_perf = single_perf * 0.75;
 
-    println!("\n🏆 EXTREME MULTI-PRODUCER RESULTS:");
+    println!("\n🏆 MULTI-PRODUCER RESULTS:");
     println!("==================================");
     println!("📊 Messages: {}", (estimated_mp_perf * (duration_secs as f64)) as u64);
     println!("📊 Duration: {:.3} seconds", duration_secs as f64);
@@ -132,7 +123,7 @@ pub fn extreme_mpsc_bench(duration_secs: u64) -> Result<f64, Box<dyn std::error:
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("📊 Extreme Performance Benchmark");
+    println!("📊 Performance Benchmark");
     println!("=================================");
     println!("Testing maximum throughput with optimized configuration");
 
@@ -142,10 +133,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  • CPU governor set to performance mode");
     println!("  • For best results: sudo taskset -c 0-8 cargo run --release --bin bench_extreme");
 
-    println!("\n🔥 ROUND 1: EXTREME Single Producer");
+    println!("\n🔥 ROUND 1: Single Producer");
     let single_throughput = extreme_spsc_bench(8)?;
 
-    println!("\n🔥 ROUND 2: EXTREME Multi-Producer Domination");
+    println!("\n🔥 ROUND 2: Multi-Producer Domination");
     let multi_throughput = extreme_mpsc_bench(8)?;
 
     println!("\n📊 Final Results:");

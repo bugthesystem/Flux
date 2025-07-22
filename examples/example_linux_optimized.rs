@@ -183,12 +183,12 @@ fn main() {
     let throughput_mps = (final_sent as f64) / duration.as_secs_f64();
     if throughput_mps > 100_000_000.0 {
         println!(
-            "🎉 BREAKTHROUGH: {:.0}M messages/second - BEYOND 100M TARGET!",
+            "🎉 EXCELLENT: {:.0}M messages/second - BEYOND 100M TARGET!",
             throughput_mps / 1_000_000.0
         );
     } else if throughput_mps > 50_000_000.0 {
         println!(
-            "🚀 EXCELLENT: {:.0}M messages/second - INDUSTRY-LEVEL PERFORMANCE!",
+            "🚀 VERY GOOD: {:.0}M messages/second - INDUSTRY-LEVEL PERFORMANCE!",
             throughput_mps / 1_000_000.0
         );
     } else {

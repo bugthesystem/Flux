@@ -1,7 +1,6 @@
 //! Realistic performance benchmark with actual measurements
 //!
-//! This benchmark provides honest, measured performance data to replace
-//! unsubstantiated claims in the documentation.
+//! This benchmark provides performance data close to real world experience
 
 use std::sync::Arc;
 use std::sync::{ atomic::{ AtomicU64, Ordering }, Mutex };

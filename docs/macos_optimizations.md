@@ -76,7 +76,7 @@ println!("E-cores: {}", optimizer.e_core_count());
 ### 4. **Apple Silicon Detection** (✅ **Works**)
 - Automatic P-core vs E-core detection
 - Platform capability detection
-- Honest performance reporting
+- Realistic performance reporting
 
 ```rust
 let optimizer = MacOSOptimizer::new()?;
@@ -147,8 +147,8 @@ cargo run --release --bin bench_macos_ultra_optimized
 ### **Current Measured Performance**
 | **Benchmark** | **Apple Silicon M1** | **Performance** |
 |---------------|---------------------|-----------------|
-| **EXTREME** | Single Producer | **22.46M msgs/sec** |
-| **EXTREME** | Multi Producer | **19.50M msgs/sec** |
+| **Highly-Optimized** | Single Producer | **22.46M msgs/sec** |
+| **Highly-Optimized** | Multi Producer | **19.50M msgs/sec** |
 | **macOS Optimized** | Sustained | **8.53M msgs/sec** |
 | **Realistic** | Multi-Consumer | **18.82M msgs/sec** |
 
@@ -239,7 +239,7 @@ macOS optimization focuses on **working with the platform** rather than against 
 
 - **✅ Use QoS classes** for thread priority (not affinity)
 - **✅ Trust LLVM** for auto-vectorization (not manual SIMD)  
-- **✅ Leverage unified memory** (not fake NUMA)
-- **✅ Honest capabilities** (not false claims)
+- **✅ Leverage unified memory** (not imitated NUMA)
+- **✅ Accurate capabilities**
 
 **Result**: Consistent 20M+ msgs/sec performance with reliable, platform-appropriate optimizations. 

@@ -1,5 +1,5 @@
 //! Simple single-thread benchmark to test ring buffer performance
-//! This avoids multi-threading issues while we validate the core performance
+//! while focusing to validate the core concepts
 
 use std::time::Instant;
 use flux::{ disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType }, utils::time::Timer };

@@ -196,6 +196,6 @@ All unsafe code in Flux is:
 - **Bounded by safety checks** to prevent undefined behavior  
 - **Thoroughly tested** for edge cases and race conditions
 - **Performance-justified** with measurable benefits (13.57M msgs/sec network, 30.8M msgs/sec IPC)
-- **Platform-specific** with proper fallbacks and honest capability documentation
+- **Platform-specific** with proper fallbacks and capability documentation
 
 The unsafe code enables high-performance operations while maintaining Rust's safety guarantees through careful design, comprehensive testing, and honest documentation of platform limitations. 

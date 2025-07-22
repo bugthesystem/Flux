@@ -212,14 +212,15 @@ Memory Ordering in Flux:
 ### Lock-Free Algorithms
 
 ```rust
-// Atomic sequence management
-pub struct RingBuffer<T> {
-    buffer: Vec<MessageSlot>,
-    writer_sequence: AtomicUsize,    // Producer position
-    reader_sequence: AtomicUsize,    // Consumer position
-    available_sequence: AtomicUsize, // Published position
-    capacity: usize,
-    mask: usize,  // For fast modulo (capacity - 1)
+// Atomic sequence management (Flux actual implementation)
+use std::sync::atomic::AtomicU64;
+
+pub struct RingBuffer {
+    buffer: Box<[MessageSlot]>,
+    mask: usize, // For fast modulo (size - 1)
+    producer_sequence: AtomicU64, // Producer position
+    consumer_sequences: Vec<AtomicU64>, // One per consumer
+    // ... other fields for config, gating, etc.
 }
 ```
 
@@ -235,10 +236,10 @@ UDP Transport Stack:
 │                    Application Layer                        │
 ├─────────────────────────────────────────────────────────────┤
 │                    Reliability Layer                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │     NAK     │  │     FEC     │  │  Adaptive Timeout   │  │
-│  │Retransmission│  │ Correction  │  │    Management      │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+│  ┌──────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
+│  │     NAK      │  │     FEC     │  │  Adaptive Timeout   │ │
+│  │Retransmission│  │ Correction  │  │    Management       │ │
+│  └──────────────┘  └─────────────┘  └─────────────────────┘ │
 ├─────────────────────────────────────────────────────────────┤
 │                    UDP Socket Layer                         │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
@@ -290,69 +291,3 @@ pub enum FluxError {
     ConfigurationError(String), // Invalid configuration
 }
 ```
-
-## Configuration Options
-
-### Ring Buffer Configuration
-
-```rust
-// Create a basic ring buffer
-let config = RingBufferConfig::new(65536)? // Power of 2 size
-    .with_consumers(2)?
-    .with_wait_strategy(WaitStrategyType::BusySpin)
-    .with_optimal_batch_size(1000);
-
-let ring_buffer = RingBuffer::new(config)?;
-
-// Producer: claim and publish messages
-if let Some((seq, slots)) = ring_buffer.try_claim_slots(10) {
-    for (i, slot) in slots.iter_mut().enumerate() {
-        slot.set_sequence(seq + i as u64);
-        slot.set_data(b"Hello, Flux!");
-    }
-    ring_buffer.publish_batch(seq, 10);
-}
-
-// Consumer: read messages
-let messages = ring_buffer.try_consume_batch(0, 10);
-for message in messages {
-    if message.is_valid() {
-        println!("Received: {:?}", message.data());
-    }
-}
-```
-
-### Transport Configuration
-
-```rust
-// Basic UDP transport (experimental)
-let config = BasicUdpConfig {
-    local_addr: "0.0.0.0:8080".to_string(),
-    buffer_size: 4096,
-    batch_size: 64,
-    non_blocking: true,
-    socket_timeout_ms: 100,
-};
-
-let mut transport = BasicUdpTransport::new(config)?;
-transport.start()?;
-
-// Zero-copy transport (advanced)
-let zero_copy_transport = TrueZeroCopyUdpTransport::new(
-    1000,   // buffer count
-    4096,   // buffer size
-    64      // header size
-)?;
-
-// Get pre-allocated buffer for sending
-if let Some(mut buffer) = zero_copy_transport.get_send_buffer() {
-    let data_slice = buffer.data_mut();
-    data_slice[..12].copy_from_slice(b"Hello, world");
-    buffer.set_data_len(12);
-    
-    // Send without additional allocations
-    zero_copy_transport.send_zero_copy(buffer, addr)?;
-}
-```
-
-This architecture provides a solid foundation for high-performance message transport while maintaining simplicity and reliability. 

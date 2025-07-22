@@ -119,10 +119,6 @@ path = "benches/bench_realistic_measurement.rs"
 name = "bench_verified_multithread"
 path = "benches/bench_verified_multithread.rs"
 
-[[bin]]
-name = "thread_affinity_test"
-path = "tests/thread_affinity_test.rs"
-
 [[example]]
 name = "example_basic_usage"
 path = "examples/example_basic_usage.rs"

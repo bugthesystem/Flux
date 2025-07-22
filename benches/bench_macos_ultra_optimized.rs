@@ -3,8 +3,8 @@ use std::env;
 use flux::disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType };
 use flux::utils::{ pin_to_cpu, macos_optimizations };
 
-// Ultra-optimized configuration for macOS
-fn create_macos_ultra_config() -> RingBufferConfig {
+// Optimized configuration for macOS
+fn create_macos_optimized_config() -> RingBufferConfig {
     RingBufferConfig {
         size: 1024 * 1024, // 1M slots
         num_consumers: 1, // Single consumer
@@ -18,7 +18,7 @@ fn create_macos_ultra_config() -> RingBufferConfig {
 }
 
 fn main() {
-    println!("🚀 macOS ULTRA-OPTIMIZED PERFORMANCE BENCHMARK");
+    println!("🚀 macOS OPTIMIZED PERFORMANCE BENCHMARK");
     println!("===============================================");
 
     // Get batch size from env or default
@@ -38,8 +38,8 @@ fn main() {
     println!("  Total cores: {}", macos_optimizer.total_core_count());
     println!("  P-core CPUs: {:?}", macos_optimizer.get_p_core_cpus());
 
-    // Create ring buffer with ultra-optimized configuration
-    let buffer_config = create_macos_ultra_config();
+    // Create ring buffer with optimized configuration
+    let buffer_config = create_macos_optimized_config();
     let mut buffer = RingBuffer::new(buffer_config).unwrap();
 
     println!("\nBenchmark Configuration:");
@@ -48,7 +48,6 @@ fn main() {
     println!("  Batch size: {}", batch_size);
     println!("  Buffer size: 1M slots");
     println!("  Wait strategy: BusySpin");
-    println!("  SIMD: NEON enabled");
     println!("  Prefetch: enabled");
     println!("  Cache alignment: 128-byte");
 
@@ -138,7 +137,7 @@ fn main() {
         0.0
     };
 
-    println!("\n📊 macOS Ultra-Optimized Results:");
+    println!("\n📊 macOS Optimized Results:");
     println!("===================================");
     println!("Messages sent: {}", total_messages_sent);
     println!("Messages consumed: {}", total_messages_consumed);

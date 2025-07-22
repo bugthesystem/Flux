@@ -5,7 +5,7 @@ use std::time::{ Duration, Instant };
 use flux::disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType, RingBufferEntry };
 
 fn main() {
-    println!("🚀 ULTRA PERFORMANCE BENCHMARK");
+    println!("🚀 PERFORMANCE BENCHMARK");
     println!("================================");
     println!("🎯 Target: 20M+ messages/second");
     println!("");
@@ -27,7 +27,7 @@ fn main() {
     let total_sent = Arc::new(AtomicU64::new(0));
     let total_received = Arc::new(AtomicU64::new(0));
 
-    println!("🔥 Starting ultra-performance benchmark...");
+    println!("🔥 Starting performance benchmark...");
     println!("⏱️  Running for 10 seconds...");
     println!("");
 

@@ -18,7 +18,7 @@ Flux is a high-performance message transport library for Rust that implements pa
 - Support for 1M+ slot ring buffers with microsecond latencies
 
 **Transport Layer**
-- Basic UDP transport for general networking
+- Unified UDP transport with ring buffer integration for high throughput
 - Reliable UDP with NAK-based retransmission and optional forward error correction
 - ✅ **(In Progress)** Kernel bypass zero-copy with io_uring on Linux
 
@@ -111,20 +111,19 @@ if let Some((seq, slots)) = buffer.try_claim_slots(8192) {
 }
 ```
 
-### UDP Transport
 
 ```rust
-use flux::{BasicUdpTransport, BasicUdpConfig};
+use flux::{UdpRingBufferTransport, UdpTransportConfig};
 
-let config = BasicUdpConfig {
+let config = UdpTransportConfig {
     local_addr: "0.0.0.0:8080".to_string(),
-    buffer_size: 4096,
+    buffer_size: 4096, // Use a power of two for best performance
     batch_size: 64,
     non_blocking: true,
     socket_timeout_ms: 100,
 };
 
-let mut transport = BasicUdpTransport::new(config)?;
+let mut transport = UdpRingBufferTransport::new(config)?;
 transport.start()?;
 
 // Send and receive messages
@@ -133,6 +132,12 @@ if let Some((data, _addr)) = transport.receive()? {
     println!("Received: {:?}", data);
 }
 ```
+
+## Platform-Specific Ring Buffer Implementations
+
+- **RingBuffer**: Default, cross-platform, in-memory, lock-free. Use for most scenarios.
+- **MappedRingBuffer**: Memory-mapped, for zero-copy or IPC. Unix-like systems (Linux/macOS/BSD).
+- **LinuxRingBuffer**: Linux-only, NUMA/hugepage/affinity optimized. Use for maximum performance on Linux.
 
 ## Performance Characteristics
 
@@ -151,7 +156,7 @@ if let Some((data, _addr)) = transport.receive()? {
 
 | Transport Type | Platform | Throughput | Use Case |
 |----------------|----------|------------|----------|
-| Basic UDP | Apple M1 | 260K msgs/sec | General networking |
+| UDP Ring Buffer | Apple M1 | 210K msgs/sec | General networking |
 | Reliable UDP | Apple M1 | 150K msgs/sec | Mission-critical data |
 
 **Performance Factors**:
@@ -163,7 +168,7 @@ if let Some((data, _addr)) = transport.receive()? {
 
 | Transport | Best For | Limitations |
 |-----------|----------|-------------|
-| **Basic UDP** | High-frequency messaging, small packets | No reliability guarantees |
+| **UDP Ring Buffer** | High-frequency messaging, small packets | No reliability guarantees |
 | **Reliable UDP** | Mission-critical data, lossy networks | Higher latency overhead |
 | **IPC Ring Buffer** | Same-host communication, ultra-low latency | Single host only |
 
@@ -184,7 +189,7 @@ flux = { version = "0.1.0", features = ["linux_optimized"] }
 
 ### Linux (Primary Target)
 - ✅ Full ring buffer functionality
-- ✅ UDP transport implementations
+- ✅ UDP transport implementations (ring buffer-based)
 - ✅ NUMA awareness and thread affinity
 - 🚧 Huge pages support (development active)
 - ✅ **(In Progress)** io_uring zero-copy integration
