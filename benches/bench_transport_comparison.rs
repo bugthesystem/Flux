@@ -650,7 +650,7 @@ fn benchmark_reliable_udp_ringbuffer(
 
     let receiver_addr = "127.0.0.1:9999".parse().unwrap();
     let sender_addr = "127.0.0.1:0".parse().unwrap();
-    let window_size = 4096;
+    let window_size = 65536;
 
     let receiver_done = Arc::new(AtomicBool::new(false));
     let received_count = Arc::new(AtomicUsize::new(0));
@@ -661,7 +661,7 @@ fn benchmark_reliable_udp_ringbuffer(
     let receiver = thread::spawn(move || {
         let mut transport = ReliableUdpRingBufferTransport::new(
             receiver_addr,
-            sender_addr,
+            receiver_addr, // Not used for receiver, but keep API
             window_size
         ).unwrap();
         while !receiver_done_clone.load(Ordering::Relaxed) {

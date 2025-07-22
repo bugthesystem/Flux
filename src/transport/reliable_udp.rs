@@ -10,6 +10,8 @@
 
 use std::net::{ SocketAddr, UdpSocket };
 use std::time::{ Instant, SystemTime, UNIX_EPOCH };
+use crate::disruptor::{ RingBufferConfig, MessageSlot, RingBuffer, RingBufferEntry };
+use crc32fast::Hasher;
 
 /// Message types for reliable UDP protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,30 +62,6 @@ impl ReliableUdpHeader {
         }
     }
 
-    /// Calculate and set checksum
-    pub fn calculate_checksum(&mut self, payload: &[u8]) {
-        // Save original checksum
-        let _original = self.checksum;
-        self.checksum = 0;
-
-        // Calculate CRC32 over header + payload
-        let header_bytes = unsafe {
-            std::slice::from_raw_parts(self as *const Self as *const u8, Self::SIZE)
-        };
-
-        let mut hasher = crc32fast::Hasher::new();
-        hasher.update(header_bytes);
-        hasher.update(payload);
-        self.checksum = hasher.finalize();
-    }
-
-    /// Verify checksum
-    pub fn verify_checksum(&self, payload: &[u8]) -> bool {
-        let mut temp_header = *self;
-        temp_header.calculate_checksum(payload);
-        temp_header.checksum == self.checksum
-    }
-
     /// Convert to bytes
     pub fn as_bytes(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self as *const Self as *const u8, Self::SIZE) }
@@ -96,6 +74,22 @@ impl ReliableUdpHeader {
         }
 
         unsafe { Some(std::ptr::read_unaligned(bytes.as_ptr() as *const Self)) }
+    }
+
+    pub fn calculate_checksum(&mut self, payload: &[u8]) {
+        self.checksum = 0;
+        let header_bytes = unsafe {
+            std::slice::from_raw_parts(self as *const Self as *const u8, Self::SIZE)
+        };
+        let mut hasher = Hasher::new();
+        hasher.update(header_bytes);
+        hasher.update(payload);
+        self.checksum = hasher.finalize();
+    }
+    pub fn verify_checksum(&self, payload: &[u8]) -> bool {
+        let mut temp_header = *self;
+        temp_header.calculate_checksum(payload);
+        temp_header.checksum == self.checksum
     }
 }
 
@@ -129,19 +123,12 @@ impl TryFrom<u8> for MessageType {
 
 /// Fully ring buffer-based reliable UDP transport (experimental)
 pub struct ReliableUdpRingBufferTransport {
-    /// UDP socket
     socket: UdpSocket,
-    /// Send window (ring buffer of RetransmissionPacket)
-    send_window: Vec<Option<RetransmissionPacket>>,
-    /// Receive buffer (ring buffer of received payloads)
-    recv_buffer: Vec<Option<Vec<u8>>>,
-    /// Window size (must be < u64::MAX/2 for wraparound)
+    send_window: RingBuffer,
+    recv_window: RingBuffer,
     window_size: usize,
-    /// Next sequence to send
     next_send_seq: u64,
-    /// Next expected sequence to receive
     next_recv_seq: u64,
-    /// Remote address
     remote_addr: SocketAddr,
 }
 
@@ -153,10 +140,43 @@ impl ReliableUdpRingBufferTransport {
     ) -> std::io::Result<Self> {
         let socket = UdpSocket::bind(bind_addr)?;
         socket.set_nonblocking(true)?;
+        // Set large socket buffers for high throughput
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            let fd = socket.as_raw_fd();
+            let buffer_size = 8 * 1024 * 1024i32; // 8MB
+            unsafe {
+                libc::setsockopt(
+                    fd,
+                    libc::SOL_SOCKET,
+                    libc::SO_SNDBUF,
+                    &buffer_size as *const i32 as *const libc::c_void,
+                    std::mem::size_of::<i32>() as libc::socklen_t
+                );
+                libc::setsockopt(
+                    fd,
+                    libc::SOL_SOCKET,
+                    libc::SO_RCVBUF,
+                    &buffer_size as *const i32 as *const libc::c_void,
+                    std::mem::size_of::<i32>() as libc::socklen_t
+                );
+            }
+        }
+        let ring_config = RingBufferConfig::new(window_size)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?
+            .with_consumers(1)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+        let send_window = RingBuffer::new(ring_config.clone()).map_err(|e|
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+        )?;
+        let recv_window = RingBuffer::new(ring_config).map_err(|e|
+            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
+        )?;
         Ok(Self {
             socket,
-            send_window: vec![None; window_size],
-            recv_buffer: vec![None; window_size],
+            send_window,
+            recv_window,
             window_size,
             next_send_seq: 0,
             next_recv_seq: 0,
@@ -167,63 +187,173 @@ impl ReliableUdpRingBufferTransport {
     /// Send a message reliably (enqueue in send window, add header, send over UDP)
     pub fn send(&mut self, data: &[u8]) -> std::io::Result<u64> {
         let seq = self.next_send_seq;
-        let idx = (seq as usize) % self.window_size;
-        // Build header
         let mut header = ReliableUdpHeader::new(0, seq, MessageType::Data, data.len() as u16);
         header.calculate_checksum(data);
-        let mut packet = Vec::with_capacity(ReliableUdpHeader::SIZE + data.len());
-        packet.extend_from_slice(unsafe {
-            std::slice::from_raw_parts(&header as *const _ as *const u8, ReliableUdpHeader::SIZE)
-        });
-        packet.extend_from_slice(data);
-        // Store in send window
-        self.send_window[idx] = Some(RetransmissionPacket {
-            data: packet.clone(),
-            sent_time: Instant::now(),
-            attempts: 0,
-            addr: self.remote_addr,
-        });
-        // Send over UDP
-        let _ = self.socket.send_to(&packet, self.remote_addr);
-        self.next_send_seq = self.next_send_seq.wrapping_add(1);
-        Ok(seq)
+        // Pre-allocate buffer for header+payload (stack for small, heap for large)
+        const MAX_STACK_SIZE: usize = 256;
+        let total_len = ReliableUdpHeader::SIZE + data.len();
+        let mut stack_buf = [0u8; MAX_STACK_SIZE];
+        let packet: &[u8] = if total_len <= MAX_STACK_SIZE {
+            stack_buf[..ReliableUdpHeader::SIZE].copy_from_slice(unsafe {
+                std::slice::from_raw_parts(
+                    &header as *const _ as *const u8,
+                    ReliableUdpHeader::SIZE
+                )
+            });
+            stack_buf[ReliableUdpHeader::SIZE..total_len].copy_from_slice(data);
+            &stack_buf[..total_len]
+        } else {
+            // Fallback to heap allocation for large messages
+            let mut heap_buf = Vec::with_capacity(total_len);
+            heap_buf.extend_from_slice(unsafe {
+                std::slice::from_raw_parts(
+                    &header as *const _ as *const u8,
+                    ReliableUdpHeader::SIZE
+                )
+            });
+            heap_buf.extend_from_slice(data);
+            // Claim a slot in the send window
+            if let Some((slot_seq, slots)) = self.send_window.try_claim_slots(1) {
+                slots[0].set_sequence(slot_seq);
+                slots[0].set_data(&heap_buf);
+                self.send_window.publish_batch(slot_seq, 1);
+                let _ = self.socket.send_to(&heap_buf, self.remote_addr);
+                self.next_send_seq = self.next_send_seq.wrapping_add(1);
+                return Ok(seq);
+            } else {
+                return Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"));
+            }
+        };
+        // Claim a slot in the send window
+        if let Some((slot_seq, slots)) = self.send_window.try_claim_slots(1) {
+            slots[0].set_sequence(slot_seq);
+            slots[0].set_data(packet);
+            self.send_window.publish_batch(slot_seq, 1);
+            let _ = self.socket.send_to(packet, self.remote_addr);
+            self.next_send_seq = self.next_send_seq.wrapping_add(1);
+            Ok(seq)
+        } else {
+            Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
+        }
+    }
+
+    /// Send a batch of messages reliably (enqueue in send window, add header, send over UDP)
+    pub fn send_batch(&mut self, data: &[&[u8]]) -> std::io::Result<usize> {
+        let batch_size = data.len();
+        if batch_size == 0 {
+            return Ok(0);
+        }
+        if let Some((slot_seq, slots)) = self.send_window.try_claim_slots(batch_size) {
+            let actual = std::cmp::min(slots.len(), data.len());
+            let mut packets: Vec<Vec<u8>> = Vec::with_capacity(actual);
+            for i in 0..actual {
+                let seq = self.next_send_seq;
+                let msg = data[i];
+                let mut header = ReliableUdpHeader::new(
+                    0,
+                    seq,
+                    MessageType::Data,
+                    msg.len() as u16
+                );
+                header.calculate_checksum(msg);
+                let total_len = ReliableUdpHeader::SIZE + msg.len();
+                let mut packet = Vec::with_capacity(total_len);
+                packet.extend_from_slice(unsafe {
+                    std::slice::from_raw_parts(
+                        &header as *const _ as *const u8,
+                        ReliableUdpHeader::SIZE
+                    )
+                });
+                packet.extend_from_slice(msg);
+                slots[i].set_sequence(slot_seq + (i as u64));
+                slots[i].set_data(&packet);
+                packets.push(packet);
+                self.next_send_seq = self.next_send_seq.wrapping_add(1);
+            }
+            self.send_window.publish_batch(slot_seq, actual);
+            // Batch send: send all packets in a tight loop
+            for pkt in &packets {
+                let _ = self.socket.send_to(pkt, self.remote_addr);
+            }
+            Ok(actual)
+        } else {
+            Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
+        }
     }
 
     /// Actually transmit packets in the send window (simulate network send)
     pub fn transmit(&mut self) {
-        for (i, slot) in self.send_window.iter_mut().enumerate() {
-            if let Some(pkt) = slot {
-                // Simulate sending over UDP
-                let _ = self.socket.send_to(&pkt.data, pkt.addr);
-                pkt.sent_time = Instant::now();
-                pkt.attempts += 1;
-            }
-        }
+        // Remove .dequeue() usage; use try_consume_batch or similar if needed
+        // For retransmission, use the retransmit method
+        // For now, this can be left empty or used for future logic
     }
 
-    /// Receive a message, parse header, place in recv_buffer, deliver in order
+    /// Receive a message, parse header, place in recv_window, deliver in order
     pub fn receive(&mut self) -> Option<Vec<u8>> {
         let mut buf = [0u8; 2048];
-        if let Ok((len, _src)) = self.socket.recv_from(&mut buf) {
-            if len < ReliableUdpHeader::SIZE {
-                return None;
+        match self.socket.recv_from(&mut buf) {
+            Ok((len, src)) => {
+                // Parse header
+                if len < ReliableUdpHeader::SIZE {
+                    return None;
+                }
+                let header = ReliableUdpHeader::from_bytes(&buf[..ReliableUdpHeader::SIZE]);
+                if header.is_none() {
+                    return None;
+                }
+                let header = header.unwrap();
+                let seq = header.sequence;
+                let msg_type = header.msg_type;
+                let payload_len = header.payload_len;
+                if msg_type != (MessageType::Data as u8) {
+                    return None;
+                }
+                let payload = &buf[ReliableUdpHeader::SIZE..len];
+                if !header.verify_checksum(payload) {
+                    return None;
+                }
+                // Strict in-order delivery
+                if seq == self.next_recv_seq {
+                    // Claim a slot in the receive window
+                    match self.recv_window.try_claim_slots(1) {
+                        Some((slot_seq, slots)) => {
+                            slots[0].set_sequence(slot_seq);
+                            slots[0].set_data(payload);
+                            self.recv_window.publish_batch(slot_seq, 1);
+                        }
+                        None => {
+                            return None;
+                        }
+                    }
+                    // Deliver in order
+                    let msgs = self.recv_window.try_consume_batch(0, 1);
+                    if !msgs.is_empty() {
+                        self.next_recv_seq = self.next_recv_seq.wrapping_add(1);
+                        return Some(msgs[0].data().to_vec());
+                    } else {
+                        // println!("[PROTO][RECV] No message ready to deliver after publish");
+                    }
+                } else if seq < self.next_recv_seq {
+                    // println!(
+                    //     "[PROTO][RECV] Duplicate or old packet: seq={}, expected={}",
+                    //     seq,
+                    //     self.next_recv_seq
+                    // );
+                    // Ignore duplicate/old
+                } else {
+                    // println!(
+                    //     "[PROTO][RECV] Out-of-order packet: seq={}, expected={}",
+                    //     seq,
+                    //     self.next_recv_seq
+                    // );
+                    // Ignore out-of-order for now
+                }
             }
-            let header = ReliableUdpHeader::from_bytes(&buf[..ReliableUdpHeader::SIZE])?;
-            if header.msg_type != (MessageType::Data as u8) {
-                return None;
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                // No UDP data available
             }
-            let payload = &buf[ReliableUdpHeader::SIZE..len];
-            if !header.verify_checksum(payload) {
-                return None;
-            }
-            let seq = header.sequence;
-            let idx = (seq as usize) % self.window_size;
-            self.recv_buffer[idx] = Some(payload.to_vec());
-            // Deliver in order
-            let expected_idx = (self.next_recv_seq as usize) % self.window_size;
-            if let Some(msg) = self.recv_buffer[expected_idx].take() {
-                self.next_recv_seq = self.next_recv_seq.wrapping_add(1);
-                return Some(msg);
+            Err(e) => {
+                // println!("[PROTO][RECV][ERR] Socket error: {}", e);
             }
         }
         None
@@ -232,8 +362,14 @@ impl ReliableUdpRingBufferTransport {
     /// Retransmit lost packets (on NAK)
     pub fn retransmit(&mut self, lost_seq: u64) {
         let idx = (lost_seq as usize) % self.window_size;
-        if let Some(pkt) = &self.send_window[idx] {
-            let _ = self.socket.send_to(&pkt.data, pkt.addr);
+        // Try to consume the slot for retransmission
+        let msgs = self.send_window.try_consume_batch(0, self.window_size);
+        for slot in msgs {
+            if slot.sequence() == lost_seq {
+                let pkt_data = slot.data();
+                let _ = self.socket.send_to(pkt_data, self.remote_addr);
+                break;
+            }
         }
     }
 
@@ -262,5 +398,10 @@ impl ReliableUdpRingBufferTransport {
                 }
             }
         }
+    }
+
+    /// Get a reference to the underlying UDP socket (for debugging)
+    pub fn socket(&self) -> &UdpSocket {
+        &self.socket
     }
 }

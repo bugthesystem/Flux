@@ -239,12 +239,13 @@ cargo run --release --features linux_optimized --bin bench_linux_numa
 
 ### Current Development (Q3 2025)
 - [x] [Linux] **(In Progress)** io_uring zero-copy integration
+- [ ] zero or optimized copy improvements
 - [ ] Stabilize reliable UDP implementation
 - [ ] Windows platform support
 - [ ] Comprehensive error handling and monitoring
 
 ### Future Enhancements
-- [ ] Zero-copy operations
+
 - [ ] Dynamic buffer sizing
 - [ ] Multi-path redundancy for reliable transport
 - [ ] Distributed consensus protocols
