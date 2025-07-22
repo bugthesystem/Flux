@@ -1,41 +1,29 @@
-//! LMAX Disruptor-style high-performance ring buffer implementation
+//! High-performance ring buffer based on the LMAX Disruptor pattern.
 //!
-//! This module provides a high-performance, lock-free ring buffer implementation
-//! based on the LMAX Disruptor pattern, optimized for mechanical sympathy with
-//! modern CPU architectures.
+//! ## Features
 //!
-//! ## Key Features
+//! - Pre-allocated, contiguous buffer for fast access
+//! - Lock-free for single-producer, multi-consumer usage
+//! - Cache-line aligned data structures to prevent false sharing
+//! - Efficient batch operations
+//! - Multiple wait strategies for different latency/CPU trade-offs
+//! - SIMD-optimized data handling and cache prefetching
 //!
-//! - **Pre-allocated Buffers**: Contiguous memory layout for performance
-//! - **Lock-Free**: Single-writer, multiple-reader without locks
-//! - **Cache-Friendly**: Cache-line aligned with false sharing prevention
-//! - **Batching**: Efficient batch operations for higher throughput
-//! - **Wait Strategies**: Multiple strategies for different latency/CPU trade-offs
-//! - **SIMD Optimizations**: Word-sized operations for faster data handling
-//! - **Cache Prefetching**: Intelligent cache warming for better performance
+//! ## Performance
 //!
-//! ## Performance Characteristics
+//! - Benchmarks show up to 10–20M messages/sec on modern hardware
+//! - Sub-microsecond P99 latency (single-threaded, optimal config)
+//! - Scales with additional consumers, subject to hardware and workload
 //!
-//! - **Throughput**: 10-20M messages/second depending on configuration
-//! - **Latency**: Sub-microsecond P99 latency for single-threaded operations
-//! - **Scaling**: 2x performance improvement in multi-threaded scenarios
-//! - **Memory**: Cache-line aligned with minimal false sharing
+//! ## Notes
 //!
-//! ## Architecture
+//! - Only one producer thread is supported for lock-free operation
 //!
-//! The ring buffer consists of:
-//! - Pre-allocated array of message slots
-//! - Atomic sequence counters for producer and consumers
-//! - Gating sequences for flow control
-//! - Wait strategies for different performance characteristics
-//! - Cache prefetching for optimal memory access patterns
-//!
-//! ## Example Usage
+//! ## Example
 //!
 //! ```rust
 //! use flux::disruptor::{RingBuffer, RingBufferConfig, WaitStrategyType};
 //!
-//! // Create optimized ring buffer
 //! let config = RingBufferConfig::new(1024 * 1024)
 //!     .unwrap()
 //!     .with_consumers(2)
@@ -47,9 +35,8 @@
 //!
 //! let mut ring_buffer = RingBuffer::new(config)?;
 //!
-//! // Producer: claim and publish
+//! // Producer: claim and publish (single thread only)
 //! if let Some((seq, slots)) = ring_buffer.try_claim_slots(100) {
-//!     // Fill the slots with data
 //!     for (i, slot) in slots.iter_mut().enumerate() {
 //!         slot.set_sequence(seq + i as u64);
 //!         slot.set_data_simd(b"Hello, Disruptor!");
@@ -66,15 +53,11 @@
 
 pub mod ring_buffer;
 pub mod message_slot;
-pub mod consumer;
-pub mod producer;
 pub mod wait_strategy;
 
 // Re-export main types
 pub use ring_buffer::RingBuffer;
 pub use message_slot::MessageSlot;
-pub use consumer::Consumer;
-pub use producer::Producer;
 pub use wait_strategy::{ WaitStrategy, BusySpinWaitStrategy, BlockingWaitStrategy };
 
 // Linux-specific exports

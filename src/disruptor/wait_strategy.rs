@@ -278,51 +278,6 @@ impl WaitStrategy for TimeoutWaitStrategy {
     }
 }
 
-/// Factory for creating wait strategies
-pub struct WaitStrategyFactory;
-
-impl WaitStrategyFactory {
-    /// Create a wait strategy from the given type
-    pub fn create_strategy(
-        strategy_type: crate::disruptor::WaitStrategyType
-    ) -> Box<dyn WaitStrategy> {
-        match strategy_type {
-            crate::disruptor::WaitStrategyType::BusySpin => Box::new(BusySpinWaitStrategy::new()),
-            crate::disruptor::WaitStrategyType::Blocking => Box::new(BlockingWaitStrategy::new()),
-            crate::disruptor::WaitStrategyType::Sleeping =>
-                Box::new(SleepingWaitStrategy::new(Duration::from_millis(1))),
-        }
-    }
-
-    /// Create a yielding wait strategy
-    pub fn yielding() -> Box<dyn WaitStrategy> {
-        Box::new(YieldingWaitStrategy::new())
-    }
-
-    /// Create a timeout wait strategy wrapping another strategy
-    pub fn with_timeout(
-        timeout: Duration,
-        base_strategy: Box<dyn WaitStrategy>
-    ) -> Box<dyn WaitStrategy> {
-        Box::new(TimeoutWaitStrategy::new(timeout, base_strategy))
-    }
-
-    /// Create a high-performance strategy optimized for low latency
-    pub fn low_latency() -> Box<dyn WaitStrategy> {
-        Box::new(BusySpinWaitStrategy::new())
-    }
-
-    /// Create a balanced strategy for moderate latency and CPU usage
-    pub fn balanced() -> Box<dyn WaitStrategy> {
-        Box::new(YieldingWaitStrategy::new())
-    }
-
-    /// Create a low-CPU strategy for background processing
-    pub fn low_cpu() -> Box<dyn WaitStrategy> {
-        Box::new(SleepingWaitStrategy::new(Duration::from_millis(10)))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
