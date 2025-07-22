@@ -116,6 +116,10 @@ name = "bench_ringbuffer_comparison"
 path = "benches/bench_ringbuffer_comparison.rs"
 
 [[bin]]
+name = "bench_ringbuffer_multithreaded"
+path = "benches/bench_ringbuffer_multithreaded.rs"
+
+[[bin]]
 name = "bench_realistic_measurement"
 path = "benches/bench_realistic_measurement.rs"
 
