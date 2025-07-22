@@ -164,7 +164,7 @@ if let Some((data, _addr)) = transport.receive()? {
  **Notes:**
 - The hybrid window (ring buffer + map) achieves the best of both worlds: fast in-order delivery and robust out-of-order handling.
 - See the `HybridWindow` implementation for details.
-- **HEADS UP!:** The BTreeMap-based NAK transport exists only for benchmark comparison and is not part of the main library API.
+> **⚠️ HEADS UP!** The BTreeMap-based NAK transport exists only for benchmark comparison and is not part of the main library API.
 
 **Performance Factors**:
 - Batch size and buffer configuration significantly impact throughput
