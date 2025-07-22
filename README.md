@@ -158,8 +158,8 @@ if let Some((data, _addr)) = transport.receive()? {
 |----------------------------------|-------------------------|--------------|------------------------------|
 | Basic UDP                        | 0.23                    | 100%         | Fastest, no reliability      |
 | UDP Ring Buffer Transport        | 0.22                    | 100%         | High-perf, no reliability    |
-| Reliable UDP (NAK, BTreeMap)     | 0.19                    | 100%         | Benchmark-only, sparse-friendly |
 | Reliable UDP (NAK, RingBuffer)   | 0.21                    | 100%         | Fastest reliable, hybrid win |
+| Reliable UDP (NAK, BTreeMap)     | 0.19                    | 100%         | Benchmark-only, sparse-friendly |
 
  **Notes:**
 - The hybrid window (ring buffer + map) achieves the best of both worlds: fast in-order delivery and robust out-of-order handling.
