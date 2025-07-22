@@ -143,7 +143,7 @@ if let Some((data, _addr)) = transport.receive()? {
 
 > **Note**: These benchmarks represent preliminary results from development hardware (Apple Silicon M1). Production performance will vary based on hardware, configuration, and workload characteristics.
 
-### IPC Ring Buffer Performance
+## IPC Ring Buffer Performance
 
 | Configuration | Platform | Throughput | Notes |
 |---------------|----------|------------|-------|
@@ -152,25 +152,49 @@ if let Some((data, _addr)) = transport.receive()? {
 | Realistic workload | Apple M1 | 15.8M msgs/sec | Production-like conditions |
 | With validation | Apple M1 | 2.08M msgs/sec | Full integrity checking |
 
-### Network Transport Performance
+## Network Transport Performance
 
-| Transport Type | Platform | Throughput | Use Case |
-|----------------|----------|------------|----------|
-| UDP Ring Buffer | Apple M1 | 210K msgs/sec | General networking |
-| Reliable UDP (RingBuffer) | Apple M1 | 200K msgs/sec | High-throughput, reliable, contiguous windows |
+| Transport                        | Throughput (M msgs/sec) | Success Rate | Notes                        |
+|----------------------------------|-------------------------|--------------|------------------------------|
+| Basic UDP                        | 0.21                    | 100%         | Fastest, no reliability      |
+| UDP Ring Buffer Transport        | 0.19                    | 100%         | High-perf, no reliability    |
+| Reliable UDP (NAK, BTreeMap)     | 0.18                    | 100%         | Benchmark-only, sparse-friendly |
+| Reliable UDP (NAK, RingBuffer, Hybrid)| 0.19                    | 100%         | Fastest reliable, hybrid win |
+
+ **Notes:**
+- The hybrid window (ring buffer + map) achieves the best of both worlds: fast in-order delivery and robust out-of-order handling.
+- See the `HybridWindow` implementation for details.
+- **HEADS UP!:** The BTreeMap-based NAK transport exists only for benchmark comparison and is not part of the main library API.
 
 **Performance Factors**:
 - Batch size and buffer configuration significantly impact throughput
-- Memory mapping and cache-line alignment provide 20-40% improvements
+- Memory mapping and cache-line alignment provide 10-20% improvements
 - Platform-specific optimizations can yield additional performance gains
 
-## Transport Layer Comparison
+### Reliable UDP (Ring Buffer + BTreeMap) — Hybrid Window
 
-| Transport | Best For | Limitations |
-|-----------|----------|-------------|
-| **UDP Ring Buffer** | High-frequency messaging, small packets | No reliability guarantees |
-| **Reliable UDP (NAK, RingBuffer)** | High-throughput, reliable, contiguous windows | Less flexible for sparse out-of-order delivery |
-| **IPC Ring Buffer** | Same-host communication, ultra-low latency | Single host only |
+- Flux uses a hybrid receive window for reliable UDP:
+  - **Ring Buffer**: Handles in-order and near-in-order packets for O(1) delivery and cache efficiency.
+  - **Map (BTreeMap)**: Buffers packets that arrive far out-of-order (outside the current window).
+- **Decision logic:**
+  - If `seq` is within `[next_expected_seq, next_expected_seq + window_size)`, store in the ring buffer.
+  - If `seq` is outside this window, store in the map.
+  - On each delivery, check the map for the next expected sequence and move it into the ring buffer if present.
+- **Benefits:**
+  - Fast path for common in-order traffic.
+  - Robust handling of sparse, out-of-order arrivals.
+  - No slot overwrite or packet loss for extreme reordering.
+
+See `HybridWindow` in the codebase for implementation details.
+
+### Reliable UDP Transports: Which Should I Use?
+
+Flux provides two reliable UDP transports:
+
+- **Reliable UDP (RingBuffer):** Uses a lock-free ring buffer for send/receive windows. Much higher throughput and cache efficiency, best for high-performance, low-loss, or mostly contiguous workloads.
+
+**Recommendation:** Try both for your workload. Use the ring buffer version for maximum performance if your network is not extremely lossy or out-of-order. Use the BTreeMap version for maximum robustness in challenging network conditions.
+
 
 ## Installation
 

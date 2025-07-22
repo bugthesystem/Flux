@@ -291,3 +291,32 @@ pub enum FluxError {
     ConfigurationError(String), // Invalid configuration
 }
 ```
+
+## Reliable UDP Hybrid Window (Ring Buffer + Map)
+
+- **Purpose:** Efficiently handle both in-order and highly out-of-order UDP packet arrivals for reliable transport.
+- **How it works:**
+  - **Ring Buffer:** Used for the current in-order delivery window (`[next_expected_seq, next_expected_seq + window_size)`). Fast O(1) access, cache-friendly.
+  - **Map (BTreeMap):** Used for packets that arrive far out-of-order (outside the window). Efficient for sparse, random access.
+- **Decision logic:**
+  - If a packet's sequence number is within the current window, store in the ring buffer.
+  - If outside the window, store in the map.
+  - On each delivery, check the map for the next expected sequence and move it into the ring buffer if present.
+- **Benefits:**
+  - Fast path for common in-order or near-in-order traffic.
+  - Robustness for rare, extreme out-of-order arrivals (no slot overwrite, no packet loss).
+  - No performance cliff for sparse windows.
+- **Implementation:** See `HybridWindow` in the codebase.
+
+## Performance Comparison (Summary)
+
+| Transport                        | Throughput (M msgs/sec) | Success Rate | Notes                        |
+|----------------------------------|-------------------------|--------------|------------------------------|
+| Basic UDP                        | 0.21                    | 100%         | Fastest, no reliability      |
+| UDP Ring Buffer Transport        | 0.19                    | 100%         | High-perf, no reliability    |
+| Reliable UDP (NAK, BTreeMap)     | 0.18                    | 100%         | Benchmark-only, sparse-friendly |
+| Reliable UDP (RingBuffer, Hybrid)| 0.19                    | 100%         | Fastest reliable, hybrid win |
+
+- The hybrid window (ring buffer + map) achieves the best of both worlds: fast in-order delivery and robust out-of-order handling.
+- - **Note:** The BTreeMap-based NAK transport exists only for benchmark comparison and is not part of the main library API.
+- See the `HybridWindow` implementation for details.

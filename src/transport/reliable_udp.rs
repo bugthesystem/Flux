@@ -11,7 +11,12 @@
 use std::net::{ SocketAddr, UdpSocket };
 use std::time::{ Instant, SystemTime, UNIX_EPOCH };
 use crate::disruptor::{ RingBufferConfig, MessageSlot, RingBuffer, RingBufferEntry };
+use crate::transport::reliable_udp::reliable_window_ring_buffer::HybridWindow;
 use crc32fast::Hasher;
+// Remove: use slab::Slab;
+
+mod reliable_window_ring_buffer;
+use self::reliable_window_ring_buffer::ReliableWindowRingBuffer;
 
 /// Message types for reliable UDP protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -121,11 +126,18 @@ impl TryFrom<u8> for MessageType {
     }
 }
 
+/// Add a new NAK message struct for batch NAKs
+#[derive(Debug, Clone, Copy)]
+pub struct BatchNak {
+    pub start_seq: u64,
+    pub end_seq: u64,
+}
+
 /// Fully ring buffer-based reliable UDP transport (experimental)
 pub struct ReliableUdpRingBufferTransport {
     socket: UdpSocket,
     send_window: RingBuffer,
-    recv_window: RingBuffer,
+    recv_window: HybridWindow,
     window_size: usize,
     next_send_seq: u64,
     next_recv_seq: u64,
@@ -152,31 +164,21 @@ impl ReliableUdpRingBufferTransport {
                     libc::SOL_SOCKET,
                     libc::SO_SNDBUF,
                     &buffer_size as *const i32 as *const libc::c_void,
-                    std::mem::size_of::<i32>() as libc::socklen_t
+                    std::mem::size_of::<i32>() as u32
                 );
                 libc::setsockopt(
                     fd,
                     libc::SOL_SOCKET,
                     libc::SO_RCVBUF,
                     &buffer_size as *const i32 as *const libc::c_void,
-                    std::mem::size_of::<i32>() as libc::socklen_t
+                    std::mem::size_of::<i32>() as u32
                 );
             }
         }
-        let ring_config = RingBufferConfig::new(window_size)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?
-            .with_consumers(1)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
-        let send_window = RingBuffer::new(ring_config.clone()).map_err(|e|
-            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-        )?;
-        let recv_window = RingBuffer::new(ring_config).map_err(|e|
-            std::io::Error::new(std::io::ErrorKind::Other, e.to_string())
-        )?;
         Ok(Self {
             socket,
-            send_window,
-            recv_window,
+            send_window: RingBuffer::new(RingBufferConfig::default()).unwrap(),
+            recv_window: HybridWindow::new(window_size, 0),
             window_size,
             next_send_seq: 0,
             next_recv_seq: 0,
@@ -289,11 +291,10 @@ impl ReliableUdpRingBufferTransport {
     }
 
     /// Receive a message, parse header, place in recv_window, deliver in order
-    pub fn receive(&mut self) -> Option<Vec<u8>> {
+    pub fn receive(&mut self) -> Option<Box<[u8; 2048]>> {
         let mut buf = [0u8; 2048];
         match self.socket.recv_from(&mut buf) {
-            Ok((len, src)) => {
-                // Parse header
+            Ok((len, _src)) => {
                 if len < ReliableUdpHeader::SIZE {
                     return None;
                 }
@@ -304,7 +305,6 @@ impl ReliableUdpRingBufferTransport {
                 let header = header.unwrap();
                 let seq = header.sequence;
                 let msg_type = header.msg_type;
-                let payload_len = header.payload_len;
                 if msg_type != (MessageType::Data as u8) {
                     return None;
                 }
@@ -312,47 +312,24 @@ impl ReliableUdpRingBufferTransport {
                 if !header.verify_checksum(payload) {
                     return None;
                 }
-                // Strict in-order delivery
-                if seq == self.next_recv_seq {
-                    // Claim a slot in the receive window
-                    match self.recv_window.try_claim_slots(1) {
-                        Some((slot_seq, slots)) => {
-                            slots[0].set_sequence(slot_seq);
-                            slots[0].set_data(payload);
-                            self.recv_window.publish_batch(slot_seq, 1);
-                        }
-                        None => {
-                            return None;
-                        }
+                self.recv_window.insert(seq, payload);
+                let mut found = None;
+                self.recv_window.deliver_in_order_with(|msg| {
+                    if found.is_none() {
+                        let mut out_buf = Box::new([0u8; 2048]);
+                        out_buf[..msg.len()].copy_from_slice(msg);
+                        found = Some(out_buf);
                     }
-                    // Deliver in order
-                    let msgs = self.recv_window.try_consume_batch(0, 1);
-                    if !msgs.is_empty() {
-                        self.next_recv_seq = self.next_recv_seq.wrapping_add(1);
-                        return Some(msgs[0].data().to_vec());
-                    } else {
-                        // println!("[PROTO][RECV] No message ready to deliver after publish");
-                    }
-                } else if seq < self.next_recv_seq {
-                    // println!(
-                    //     "[PROTO][RECV] Duplicate or old packet: seq={}, expected={}",
-                    //     seq,
-                    //     self.next_recv_seq
-                    // );
-                    // Ignore duplicate/old
-                } else {
-                    // println!(
-                    //     "[PROTO][RECV] Out-of-order packet: seq={}, expected={}",
-                    //     seq,
-                    //     self.next_recv_seq
-                    // );
-                    // Ignore out-of-order for now
-                }
+                });
+                self.recv_window.ring.send_batch_naks_for_gaps(|start, end| {
+                    self.send_batch_nak(start, end);
+                });
+                found;
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 // No UDP data available
             }
-            Err(e) => {
+            Err(_e) => {
                 // println!("[PROTO][RECV][ERR] Socket error: {}", e);
             }
         }
@@ -384,7 +361,20 @@ impl ReliableUdpRingBufferTransport {
         let _ = self.socket.send_to(&packet, self.remote_addr);
     }
 
-    /// Process incoming NAKs and retransmit as needed
+    /// Send a batch NAK for a range of missing sequence numbers
+    pub fn send_batch_nak(&self, start_seq: u64, end_seq: u64) {
+        let mut packet = Vec::with_capacity(ReliableUdpHeader::SIZE + 16);
+        let mut header = ReliableUdpHeader::new(0, start_seq, MessageType::Nak, 16);
+        header.calculate_checksum(&[]);
+        packet.extend_from_slice(unsafe {
+            std::slice::from_raw_parts(&header as *const _ as *const u8, ReliableUdpHeader::SIZE)
+        });
+        packet.extend_from_slice(&start_seq.to_le_bytes());
+        packet.extend_from_slice(&end_seq.to_le_bytes());
+        let _ = self.socket.send_to(&packet, self.remote_addr);
+    }
+
+    /// Process incoming NAKs and retransmit as needed (batch-aware)
     pub fn process_naks(&mut self) {
         let mut buf = [0u8; 2048];
         if let Ok((len, _src)) = self.socket.recv_from(&mut buf) {
@@ -394,8 +384,36 @@ impl ReliableUdpRingBufferTransport {
             let header = ReliableUdpHeader::from_bytes(&buf[..ReliableUdpHeader::SIZE]);
             if let Some(h) = header {
                 if h.msg_type == (MessageType::Nak as u8) {
-                    self.retransmit(h.sequence);
+                    // Batch NAK: payload is 16 bytes (start_seq, end_seq)
+                    if h.payload_len == 16 && len >= ReliableUdpHeader::SIZE + 16 {
+                        let start_seq = u64::from_le_bytes(
+                            buf[ReliableUdpHeader::SIZE..ReliableUdpHeader::SIZE + 8]
+                                .try_into()
+                                .unwrap()
+                        );
+                        let end_seq = u64::from_le_bytes(
+                            buf[ReliableUdpHeader::SIZE + 8..ReliableUdpHeader::SIZE + 16]
+                                .try_into()
+                                .unwrap()
+                        );
+                        self.retransmit_batch(start_seq, end_seq);
+                    } else {
+                        // Legacy single NAK
+                        self.retransmit(h.sequence);
+                    }
                 }
+            }
+        }
+    }
+
+    /// Retransmit a batch of lost packets (on batch NAK)
+    pub fn retransmit_batch(&mut self, start_seq: u64, end_seq: u64) {
+        let msgs = self.send_window.try_consume_batch(0, self.window_size);
+        for slot in msgs {
+            let seq = slot.sequence();
+            if seq >= start_seq && seq <= end_seq {
+                let pkt_data = slot.data();
+                let _ = self.socket.send_to(pkt_data, self.remote_addr);
             }
         }
     }
@@ -403,5 +421,96 @@ impl ReliableUdpRingBufferTransport {
     /// Get a reference to the underlying UDP socket (for debugging)
     pub fn socket(&self) -> &UdpSocket {
         &self.socket
+    }
+
+    pub fn receive_batch(&mut self, max_count: usize) -> Vec<Box<[u8; 2048]>> {
+        let mut received = Vec::with_capacity(max_count);
+        let mut bufs = vec![[0u8; 2048]; max_count];
+        let mut lens = vec![0usize; max_count];
+        let mut n = 0;
+        // Batch: receive up to max_count UDP packets (socket-level batching only)
+        for i in 0..max_count {
+            match self.socket.recv_from(&mut bufs[i]) {
+                Ok((len, _src)) => {
+                    lens[i] = len;
+                    n += 1;
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+        for i in 0..n {
+            let len = lens[i];
+            if len < ReliableUdpHeader::SIZE {
+                continue;
+            }
+            let header = ReliableUdpHeader::from_bytes(&bufs[i][..ReliableUdpHeader::SIZE]);
+            if header.is_none() {
+                continue;
+            }
+            let header = header.unwrap();
+            let seq = header.sequence;
+            let payload = &bufs[i][ReliableUdpHeader::SIZE..len];
+            if !header.verify_checksum(payload) {
+                continue;
+            }
+            self.recv_window.insert(seq, payload);
+        }
+        // Use deliver_in_order_with to process in-order messages and copy to output
+        self.recv_window.deliver_in_order_with(|msg| {
+            let mut buf = Box::new([0u8; 2048]);
+            buf[..msg.len()].copy_from_slice(msg);
+            received.push(buf);
+        });
+        received
+    }
+
+    /// Zero-copy, callback-based delivery: process each message in-place with the provided closure.
+    pub fn receive_batch_with<F: FnMut(&[u8])>(&mut self, max_count: usize, mut f: F) {
+        let mut bufs = vec![[0u8; 2048]; max_count];
+        let mut lens = vec![0usize; max_count];
+        let mut n = 0;
+        // Batch: receive up to max_count UDP packets (socket-level batching only)
+        for i in 0..max_count {
+            match self.socket.recv_from(&mut bufs[i]) {
+                Ok((len, _src)) => {
+                    lens[i] = len;
+                    n += 1;
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    break;
+                }
+                Err(_) => {
+                    break;
+                }
+            }
+        }
+        for i in 0..n {
+            let len = lens[i];
+            if len < ReliableUdpHeader::SIZE {
+                continue;
+            }
+            let header = ReliableUdpHeader::from_bytes(&bufs[i][..ReliableUdpHeader::SIZE]);
+            if header.is_none() {
+                continue;
+            }
+            let header = header.unwrap();
+            let seq = header.sequence;
+            let payload = &bufs[i][ReliableUdpHeader::SIZE..len];
+            if !header.verify_checksum(payload) {
+                continue;
+            }
+            self.recv_window.insert(seq, payload);
+        }
+        // Zero-copy: process each deliverable message in-place
+        self.recv_window.deliver_in_order_with(|msg| f(msg));
+        // After delivery, send batch NAKs for missing ranges
+        self.recv_window.ring.send_batch_naks_for_gaps(|start, end| {
+            self.send_batch_nak(start, end);
+        });
     }
 }
