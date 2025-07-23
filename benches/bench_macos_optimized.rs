@@ -116,7 +116,7 @@ fn main() {
             let elapsed_secs = start_time.elapsed().as_secs_f64();
             let throughput = (total_messages_sent as f64) / elapsed_secs;
             println!(
-                "  📈 {} sent, {} consumed | {:.2} M/s | {:.2}s elapsed",
+                "  📈 Messages sent: {} | consumed: {} | {:.2} M/s | {:.2}s elapsed",
                 total_messages_sent,
                 total_messages_consumed,
                 throughput / 1_000_000.0,

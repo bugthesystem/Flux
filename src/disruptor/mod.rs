@@ -33,13 +33,14 @@
 //!     .with_cache_prefetch(true)
 //!     .with_simd_optimizations(true);
 //!
-//! let mut ring_buffer = RingBuffer::new(config)?;
+//! let mut ring_buffer = RingBuffer::new(config).unwrap();
 //!
 //! // Producer: claim and publish (single thread only)
 //! if let Some((seq, slots)) = ring_buffer.try_claim_slots(100) {
+//!     use flux::disruptor::RingBufferEntry;
 //!     for (i, slot) in slots.iter_mut().enumerate() {
 //!         slot.set_sequence(seq + i as u64);
-//!         slot.set_data_simd(b"Hello, Disruptor!");
+//!         slot.set_data(b"Hello, Disruptor!");
 //!     }
 //!     ring_buffer.publish_batch(seq, 100);
 //! }

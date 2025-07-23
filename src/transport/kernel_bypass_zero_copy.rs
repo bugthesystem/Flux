@@ -34,7 +34,10 @@ impl Default for KernelBypassConfig {
         Self {
             ring_size: 65536, // 64K entries
             use_io_uring: cfg!(target_os = "linux"),
+            #[cfg(target_os = "linux")]
             use_mmap: true,
+            #[cfg(not(target_os = "linux"))]
+            use_mmap: false,
             use_huge_pages: true,
             dma_alignment: 4096, // Page-aligned for DMA
         }
@@ -185,11 +188,22 @@ impl ZeroCopyMappedRing {
 
 impl Drop for ZeroCopyMappedRing {
     fn drop(&mut self) {
+        eprintln!(
+            "[DEBUG] Dropping ZeroCopyMappedRing: buffer={:p}, size={}, fd={}",
+            self.buffer,
+            self.size,
+            self.fd
+        );
         if !self.buffer.is_null() {
             unsafe {
-                if self.fd >= 0 {
+                #[cfg(unix)]
+                {
+                    // If buffer was allocated with mmap, always use munmap
                     libc::munmap(self.buffer as *mut libc::c_void, self.buffer_size);
-                } else {
+                }
+                #[cfg(not(unix))]
+                {
+                    // On non-unix, fallback to free (should not happen)
                     libc::free(self.buffer as *mut libc::c_void);
                 }
             }

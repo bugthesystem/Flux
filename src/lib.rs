@@ -7,6 +7,7 @@ pub mod optimizations;
 pub mod monitoring;
 pub mod transport;
 pub mod utils;
+pub mod reliability;
 
 // Re-export main components
 pub use disruptor::{ RingBuffer, RingBufferConfig, MessageSlot, WaitStrategyType };
@@ -18,6 +19,8 @@ pub use transport::{
     TransportMetrics,
     reliable_udp::ReliableUdpRingBufferTransport,
 };
+pub use monitoring::{ PerformanceMonitor, PerformanceStats };
+pub use reliability::{ ReliabilityConfig, FecEncoder };
 
 /// Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

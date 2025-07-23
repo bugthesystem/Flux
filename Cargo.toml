@@ -144,10 +144,6 @@ name = "example_linux_optimized"
 path = "examples/example_linux_optimized.rs"
 
 [[example]]
-name = "example_optimized_copy_reliable_udp"
-path = "examples/example_optimized_copy_reliable_udp.rs"
-
-[[example]]
 name = "fec_library_test"
 path = "examples/fec_library_test.rs"
 

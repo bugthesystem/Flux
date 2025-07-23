@@ -2,7 +2,8 @@ use std::time::{ Duration, Instant };
 use std::thread;
 use std::sync::Arc;
 use flux::disruptor::{ RingBufferConfig, ring_buffer::MappedRingBuffer, RingBufferEntry };
-use flux::utils::{ pin_to_cpu, macos_optimizations };
+use flux::utils::{ pin_to_cpu };
+use flux::optimizations::macos_optimizations;
 
 fn main() {
     println!("🚀 MINIMAL THROUGHPUT TEST");

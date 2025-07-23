@@ -26,7 +26,7 @@
 //!
 //! // Create a new message slot with data
 //! let mut slot = MessageSlot::default();
-//! slot.set_data_simd(b"Hello, Flux!"); // SIMD-optimized data copying (not zero-copy)
+//! slot.set_data(b"Hello, Flux!"); // SIMD-optimized data copying (not zero-copy)
 //!
 //! // Access the data
 //! println!("Data: {:?}", slot.data());
@@ -40,6 +40,7 @@ use serde::{ Deserialize, Serialize };
 use crate::disruptor::{ RingBufferEntry, Sequence };
 use crate::error::{ Result, FluxError };
 use crate::constants::MAX_MESSAGE_DATA_SIZE;
+use crate::utils::memory;
 
 #[cfg(target_arch = "aarch64")]
 use std::arch::aarch64::*;
@@ -211,106 +212,11 @@ impl MessageSlot {
         // Use SIMD-optimized copy for better performance
         unsafe {
             // SAFETY: dst and src have the same length (data_len), both are valid slices
-            Self::copy_data_simd_enhanced(&mut self.data[..data_len], &data[..data_len]);
+            memory::copy_data_simd(&mut self.data[..data_len], &data[..data_len]);
         }
 
         // Update checksum based on copied data using hardware CRC32
         self.checksum = Self::calculate_checksum_hardware(&self.data[..data_len]);
-    }
-
-    /// Enhanced SIMD-optimized data copying with NEON
-    ///
-    /// # Safety
-    ///
-    /// This function is safe when:
-    /// - `dst` and `src` have the same length
-    /// - Both slices point to valid, non-overlapping memory
-    /// - The memory is properly aligned for SIMD operations
-    ///
-    /// The NEON operations are safe because:
-    /// - We only read from `src` and write to `dst`
-    /// - All pointer arithmetic is bounds-checked
-    /// - SIMD instructions are architecture-specific and well-defined
-    #[inline(always)]
-    unsafe fn copy_data_simd_enhanced(dst: &mut [u8], src: &[u8]) {
-        if dst.len() != src.len() {
-            return;
-        }
-
-        let len = dst.len();
-        let dst_ptr = dst.as_mut_ptr();
-        let src_ptr = src.as_ptr();
-
-        #[cfg(target_arch = "aarch64")]
-        {
-            // Use NEON for ultra-fast copying on Apple Silicon
-            if len >= 64 {
-                // Process 64 bytes at a time for maximum throughput
-                let chunks_64 = len / 64;
-                for i in 0..chunks_64 {
-                    let offset = i * 64;
-
-                    // Load 4x16-byte vectors
-                    // SAFETY: offset is calculated safely, pointers are valid
-                    let v1 = vld1q_u8(src_ptr.add(offset));
-                    let v2 = vld1q_u8(src_ptr.add(offset + 16));
-                    let v3 = vld1q_u8(src_ptr.add(offset + 32));
-                    let v4 = vld1q_u8(src_ptr.add(offset + 48));
-
-                    // Store 4x16-byte vectors
-                    // SAFETY: offset is calculated safely, pointers are valid
-                    vst1q_u8(dst_ptr.add(offset), v1);
-                    vst1q_u8(dst_ptr.add(offset + 16), v2);
-                    vst1q_u8(dst_ptr.add(offset + 32), v3);
-                    vst1q_u8(dst_ptr.add(offset + 48), v4);
-                }
-
-                // Handle remaining bytes
-                let remaining_start = chunks_64 * 64;
-                for i in remaining_start..len {
-                    // SAFETY: i is bounds-checked by the loop condition
-                    *dst_ptr.add(i) = *src_ptr.add(i);
-                }
-            } else if len >= 16 {
-                // Process 16 bytes at a time
-                let chunks_16 = len / 16;
-                for i in 0..chunks_16 {
-                    let offset = i * 16;
-                    // SAFETY: offset is calculated safely, pointers are valid
-                    let chunk = vld1q_u8(src_ptr.add(offset));
-                    vst1q_u8(dst_ptr.add(offset), chunk);
-                }
-
-                // Handle remaining bytes
-                let remaining_start = chunks_16 * 16;
-                for i in remaining_start..len {
-                    // SAFETY: i is bounds-checked by the loop condition
-                    *dst_ptr.add(i) = *src_ptr.add(i);
-                }
-            } else {
-                // Small data - use word-sized copies
-                let chunks_8 = len / 8;
-                for i in 0..chunks_8 {
-                    let offset = i * 8;
-                    // SAFETY: offset is calculated safely, pointers are valid
-                    let chunk = std::ptr::read_unaligned(src_ptr.add(offset) as *const u64);
-                    std::ptr::write_unaligned(dst_ptr.add(offset) as *mut u64, chunk);
-                }
-
-                // Handle remaining bytes
-                let remaining_start = chunks_8 * 8;
-                for i in remaining_start..len {
-                    // SAFETY: i is bounds-checked by the loop condition
-                    *dst_ptr.add(i) = *src_ptr.add(i);
-                }
-            }
-        }
-
-        #[cfg(not(target_arch = "aarch64"))]
-        {
-            // Fallback for non-ARM64 architectures
-            dst.copy_from_slice(src);
-        }
     }
 
     /// Calculate checksum with SIMD optimization

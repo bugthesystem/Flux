@@ -9,17 +9,17 @@ fn main() -> Result<(), FluxError> {
 
     // Create a ring buffer with 1024 slots
     let config = RingBufferConfig::new(1024).unwrap();
-    let buffer = RingBuffer::new(config)?;
+    let mut buffer = RingBuffer::new(config)?;
 
     println!("Created ring buffer with 1024 slots");
 
     // Example 1: Single message operations
     println!("\nExample 1: Single Message Operations");
-    single_message_example(&buffer)?;
+    single_message_example(&mut buffer)?;
 
     // Example 2: Batch operations
     println!("\nExample 2: Batch Operations");
-    batch_operations_example(&buffer)?;
+    batch_operations_example(&mut buffer)?;
 
     // Example 3: Producer-consumer pattern
     println!("\nExample 3: Producer-Consumer Pattern");
@@ -33,7 +33,7 @@ fn main() -> Result<(), FluxError> {
     Ok(())
 }
 
-fn single_message_example(buffer: &RingBuffer) -> Result<(), FluxError> {
+fn single_message_example(buffer: &mut RingBuffer) -> Result<(), FluxError> {
     println!("  Sending single messages...");
 
     // Send messages one by one
@@ -68,7 +68,7 @@ fn single_message_example(buffer: &RingBuffer) -> Result<(), FluxError> {
     Ok(())
 }
 
-fn batch_operations_example(buffer: &RingBuffer) -> Result<(), FluxError> {
+fn batch_operations_example(buffer: &mut RingBuffer) -> Result<(), FluxError> {
     println!("  Sending batch of messages...");
 
     const BATCH_SIZE: usize = 10;
@@ -103,7 +103,7 @@ fn producer_consumer_example() -> Result<(), FluxError> {
 
     let config = RingBufferConfig::new(4096).unwrap();
     let buffer = RingBuffer::new(config)?;
-    let buffer = std::sync::Arc::new(buffer);
+    let buffer = std::sync::Arc::new(std::sync::Mutex::new(buffer));
 
     let messages_to_send = 1000;
 
@@ -117,13 +117,14 @@ fn producer_consumer_example() -> Result<(), FluxError> {
 
             // Retry until we can send
             loop {
-                if let Some((seq, slots)) = producer_buffer.try_claim_slots(1) {
+                let mut buf = producer_buffer.lock().unwrap();
+                if let Some((seq, slots)) = buf.try_claim_slots(1) {
                     slots[0].set_sequence(seq);
                     slots[0].set_data(message.as_bytes());
-                    producer_buffer.publish_batch(seq, 1);
+                    buf.publish_batch(seq, 1);
                     break;
                 }
-                // Brief yield to avoid busy waiting
+                drop(buf); // Release lock before yielding
                 thread::yield_now();
             }
         }
@@ -141,12 +142,14 @@ fn producer_consumer_example() -> Result<(), FluxError> {
         let mut consecutive_empty = 0;
 
         while received_count < messages_to_send {
-            let messages = consumer_buffer.try_consume_batch(0, 10);
+            let mut buf = consumer_buffer.lock().unwrap();
+            let messages = buf.try_consume_batch(0, 10);
             if !messages.is_empty() {
                 received_count += messages.len();
                 consecutive_empty = 0;
             } else {
                 consecutive_empty += 1;
+                drop(buf); // Release lock before sleeping/yielding
                 // If we've been empty for too long, yield more aggressively
                 if consecutive_empty > 100 {
                     thread::sleep(Duration::from_micros(1));
@@ -182,7 +185,7 @@ fn wait_strategies_example() -> Result<(), FluxError> {
         println!("  Testing {} strategy...", name);
 
         let config = RingBufferConfig::new(1024).unwrap().with_wait_strategy(strategy);
-        let buffer = RingBuffer::new(config)?;
+        let mut buffer = RingBuffer::new(config)?;
 
         let start_time = Instant::now();
         let test_messages = 100;

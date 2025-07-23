@@ -248,6 +248,12 @@ impl LinuxRingBuffer {
 
 impl Drop for LinuxRingBuffer {
     fn drop(&mut self) {
+        eprintln!(
+            "[DEBUG] Dropping LinuxRingBuffer: buffer={:p}, size={}, numa={}",
+            self.buffer,
+            self.size,
+            self.numa_optimizer.is_some()
+        );
         if let Some(ref numa) = self.numa_optimizer {
             let buffer_size = self.size * std::mem::size_of::<MessageSlot>();
             numa.free(self.buffer);

@@ -22,9 +22,8 @@
 //! ## Example Usage
 //!
 //! ```rust
-//! use flux::disruptor::{RingBuffer, RingBufferConfig, WaitStrategyType};
+//! use flux::disruptor::{RingBuffer, RingBufferConfig, WaitStrategyType, RingBufferEntry};
 //!
-//! // Create optimized ring buffer
 //! let config = RingBufferConfig::new(1024 * 1024)
 //!     .unwrap()
 //!     .with_consumers(2)
@@ -34,14 +33,12 @@
 //!     .with_cache_prefetch(true)
 //!     .with_simd_optimizations(true);
 //!
-//! let mut ring_buffer = RingBuffer::new(config)?;
-//!
+//! let mut ring_buffer = RingBuffer::new(config).unwrap();
 //! // Producer: claim and publish slots
 //! if let Some((seq, slots)) = ring_buffer.try_claim_slots(100) {
-//!     // Fill slots with data
 //!     for (i, slot) in slots.iter_mut().enumerate() {
 //!         slot.set_sequence(seq + i as u64);
-//!         slot.set_data_simd(b"Hello, Flux!");
+//!         slot.set_data(b"Hello, Flux!");
 //!     }
 //!     ring_buffer.publish_batch(seq, 100);
 //! }
@@ -813,6 +810,11 @@ impl MappedRingBuffer {
 
 impl Drop for MappedRingBuffer {
     fn drop(&mut self) {
+        eprintln!(
+            "[DEBUG] Dropping MappedRingBuffer: buffer={:p}, size={} (slots)",
+            self.buffer,
+            self.size
+        );
         if self.buffer != ptr::null_mut() {
             let buffer_size = self.size * std::mem::size_of::<MessageSlot>();
             unsafe {
