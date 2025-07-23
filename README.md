@@ -19,8 +19,8 @@ Flux is a high-performance message transport library for Rust that implements pa
 
 **Transport Layer**
 - Unified UDP transport with ring buffer integration for high throughput
-- Reliable UDP with NAK-based retransmission and optional forward error correction
-- ✅ **(In Progress)** Kernel bypass zero-copy with io_uring on Linux
+- Reliable UDP with NAK-based retransmission and optional forward error correction (XOR-based)
+- 🚧 **(In Progress)** Kernel bypass zero-copy with io_uring on Linux
 
 **Platform Optimizations**
 - **Linux**: NUMA awareness, huge pages, real-time scheduling support
@@ -147,7 +147,7 @@ if let Some((data, _addr)) = transport.receive()? {
  **Notes:**
 - [1] The hybrid window (ring buffer + map) achieves the best of both worlds: fast in-order delivery and robust out-of-order handling.
 - See the `HybridWindow` implementation for details.
-> **⚠️ HEADS UP!** The BTreeMap-based NAK transport exists only for benchmark comparison and is not part of the main library API.
+> **⚠️ HEADS UP!** The `BTreeMap-based NAK transport` exists only for benchmark comparison and is not part of the main library API.
 
 **Performance Factors**:
 - Batch size and buffer configuration significantly impact throughput
@@ -189,8 +189,8 @@ flux = { version = "0.1.0", features = ["linux_optimized"] }
 - ✅ Full ring buffer functionality
 - ✅ UDP transport implementations (ring buffer-based)
 - ✅ NUMA awareness and thread affinity
-- 🚧 Huge pages support (development active)
-- ✅ **(In Progress)** io_uring zero-copy integration
+- 🚧 **(In Progress)** Huge pages support (development active)
+- 🚧 **(In Progress)** io_uring zero-copy integration
 
 ### macOS
 - ✅ Ring buffer with Apple Silicon optimizations
