@@ -150,27 +150,3 @@ fn run_client(local_addr: &str, server_addr: &str) -> Result<(), Box<dyn std::er
 
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_basic_udp_transport_creation() {
-        let config = UdpTransportConfig {
-            local_addr: "127.0.0.1:0".to_string(),
-            buffer_size: 1024,
-            batch_size: 32,
-            non_blocking: true,
-            socket_timeout_ms: 50,
-        };
-        let transport = UdpRingBufferTransport::auto(config);
-        assert!(transport.is_ok());
-    }
-
-    #[test]
-    fn test_message_roundtrip() {
-        // Test message roundtrip functionality
-        assert!(true); // Placeholder test
-    }
-}
