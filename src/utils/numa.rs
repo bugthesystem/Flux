@@ -182,60 +182,6 @@ pub fn set_max_priority() -> Result<()> {
     }
 }
 
-/// Lock memory to prevent paging
-pub fn lock_memory(ptr: *mut u8, size: usize) -> Result<()> {
-    #[cfg(all(target_os = "linux", feature = "linux_hugepages"))]
-    {
-        use libc::{ mlock };
-        unsafe {
-            let result = mlock(ptr as *const libc::c_void, size);
-            if result == 0 {
-                Ok(())
-            } else {
-                Err(FluxError::Io(std::io::Error::last_os_error()))
-            }
-        }
-    }
-    #[cfg(not(all(target_os = "linux", feature = "linux_hugepages")))]
-    {
-        Ok(())
-    }
-}
-
-/// Allocate memory using huge pages (Linux) or fallback
-pub fn allocate_huge_pages(size: usize) -> Result<*mut u8> {
-    #[cfg(all(target_os = "linux", feature = "linux_hugepages"))]
-    {
-        use libc::{ mmap, MAP_ANONYMOUS, MAP_PRIVATE, MAP_HUGETLB, PROT_READ, PROT_WRITE };
-        unsafe {
-            let ptr = mmap(
-                ptr::null_mut(),
-                size,
-                PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,
-                -1,
-                0
-            );
-            if ptr == libc::MAP_FAILED {
-                Err(FluxError::Io(std::io::Error::last_os_error()))
-            } else {
-                Ok(ptr as *mut u8)
-            }
-        }
-    }
-    #[cfg(not(all(target_os = "linux", feature = "linux_hugepages")))]
-    {
-        unsafe {
-            let ptr = libc::malloc(size);
-            if ptr.is_null() {
-                Err(FluxError::Io(std::io::Error::new(std::io::ErrorKind::Other, "malloc failed")))
-            } else {
-                Ok(ptr as *mut u8)
-            }
-        }
-    }
-}
-
 /// Allocate memory with CPU affinity (cross-platform)
 pub fn allocate_with_cpu_affinity(size: usize, cpu_id: u32) -> Result<*mut u8> {
     let manager = NumaManager::new().ok_or_else(|| FluxError::config("NUMA/affinity unavailable"))?;

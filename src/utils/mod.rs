@@ -42,8 +42,6 @@ pub use linux_numa::{
     LinuxNumaOptimizer,
     pin_to_cpu as linux_pin_to_cpu,
     set_max_priority as linux_set_max_priority,
-    lock_memory as linux_lock_memory,
-    allocate_huge_pages as linux_allocate_huge_pages,
 };
 
 /// System page size
