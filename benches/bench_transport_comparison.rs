@@ -356,7 +356,7 @@ mod reliable_udp_btreemap {
 fn benchmark_reliable_udp(
     config: &TransportTestConfig
 ) -> Result<TransportBenchmarkResult, Box<dyn std::error::Error>> {
-    println!("🔸 Testing Reliable UDP Transport (NAK-based)...");
+    println!("🔸 Testing Reliable UDP Transport (NAK-based, BTreeMap)...");
 
     let udp_config = reliable_udp_btreemap::ReliableUdpConfig {
         window_size: 1024,
@@ -411,7 +411,7 @@ fn benchmark_reliable_udp(
     };
 
     Ok(TransportBenchmarkResult {
-        transport_name: "Reliable UDP (NAK)".to_string(),
+        transport_name: "Reliable UDP (NAK, BTreeMap)".to_string(),
         messages_sent,
         messages_received: messages_sent, // NAK ensures reliability
         duration,
@@ -729,7 +729,166 @@ fn benchmark_reliable_udp_ringbuffer(
     };
 
     Ok(TransportBenchmarkResult {
-        transport_name: "Reliable UDP (RingBuffer)".to_string(),
+        transport_name: "Reliable UDP (NAK, RingBuffer + BTreeMap)".to_string(),
+        messages_sent,
+        messages_received,
+        duration,
+        throughput_mps: throughput,
+        avg_latency_us: avg_latency,
+        success_rate: if messages_sent > 0 {
+            (messages_received as f64) / (messages_sent as f64)
+        } else {
+            0.0
+        },
+    })
+}
+
+// --- Tokio UDP Benchmark ---
+fn benchmark_tokio_udp(
+    config: &TransportTestConfig
+) -> Result<TransportBenchmarkResult, Box<dyn std::error::Error>> {
+    use tokio::net::UdpSocket;
+    use tokio::runtime::Runtime;
+    use std::sync::{ Arc, atomic::{ AtomicBool, Ordering }, atomic::AtomicUsize };
+    use std::thread;
+
+    println!("🔹 Testing Tokio UDP (async) ...");
+    let rt = Runtime::new()?;
+    let receiver_addr = "127.0.0.1:9998";
+    let receiver_done = Arc::new(AtomicBool::new(false));
+    let received_count = Arc::new(AtomicUsize::new(0));
+
+    // Receiver thread (async)
+    let receiver_done_clone = receiver_done.clone();
+    let received_count_clone = received_count.clone();
+    let receiver = thread::spawn(move || {
+        rt.block_on(async move {
+            let socket = UdpSocket::bind(receiver_addr).await.unwrap();
+            let mut buf = vec![0u8; 2048];
+            while !receiver_done_clone.load(Ordering::Relaxed) {
+                if let Ok((_len, _addr)) = socket.try_recv_from(&mut buf) {
+                    received_count_clone.fetch_add(1, Ordering::Relaxed);
+                }
+                tokio::task::yield_now().await;
+            }
+        });
+    });
+
+    // Sender (main thread, async)
+    let sender_rt = Runtime::new()?;
+    let test_message = vec![0xEE; config.message_size];
+    let start_time = Instant::now();
+    let mut messages_sent = 0;
+    let mut total_latency_us = 0.0;
+    sender_rt.block_on(async {
+        let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let target_addr: std::net::SocketAddr = receiver_addr.parse().unwrap();
+        for _ in 0..config.message_count {
+            let send_start = Instant::now();
+            match socket.send_to(&test_message, target_addr).await {
+                Ok(_) => {
+                    messages_sent += 1;
+                    total_latency_us += send_start.elapsed().as_micros() as f64;
+                }
+                Err(_) => {}
+            }
+            if start_time.elapsed().as_secs() >= config.duration_secs {
+                break;
+            }
+        }
+    });
+
+    // Signal receiver to stop and join
+    receiver_done.store(true, Ordering::Relaxed);
+    let _ = receiver.join();
+    let messages_received = received_count.load(Ordering::Relaxed);
+
+    let duration = start_time.elapsed();
+    let throughput = (messages_sent as f64) / duration.as_secs_f64();
+    let avg_latency = if messages_sent > 0 {
+        total_latency_us / (messages_sent as f64)
+    } else {
+        0.0
+    };
+
+    Ok(TransportBenchmarkResult {
+        transport_name: "Tokio UDP (async)".to_string(),
+        messages_sent,
+        messages_received,
+        duration,
+        throughput_mps: throughput,
+        avg_latency_us: avg_latency,
+        success_rate: if messages_sent > 0 {
+            (messages_received as f64) / (messages_sent as f64)
+        } else {
+            0.0
+        },
+    })
+}
+
+// --- std::net::UdpSocket Benchmark ---
+fn benchmark_std_udp(
+    config: &TransportTestConfig
+) -> Result<TransportBenchmarkResult, Box<dyn std::error::Error>> {
+    use std::net::UdpSocket;
+    use std::sync::{ Arc, atomic::{ AtomicBool, Ordering }, atomic::AtomicUsize };
+    use std::thread;
+
+    println!("🔹 Testing std::net::UdpSocket (sync) ...");
+    let receiver_addr = "127.0.0.1:9997";
+    let receiver_done = Arc::new(AtomicBool::new(false));
+    let received_count = Arc::new(AtomicUsize::new(0));
+
+    // Receiver thread
+    let receiver_done_clone = receiver_done.clone();
+    let received_count_clone = received_count.clone();
+    let receiver = thread::spawn(move || {
+        let socket = UdpSocket::bind(receiver_addr).unwrap();
+        let mut buf = [0u8; 2048];
+        socket.set_nonblocking(true).unwrap();
+        while !receiver_done_clone.load(Ordering::Relaxed) {
+            if let Ok((_len, _addr)) = socket.recv_from(&mut buf) {
+                received_count_clone.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    });
+
+    // Sender (main thread)
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let target_addr: std::net::SocketAddr = receiver_addr.parse().unwrap();
+    let test_message = vec![0xEF; config.message_size];
+    let start_time = Instant::now();
+    let mut messages_sent = 0;
+    let mut total_latency_us = 0.0;
+    for _ in 0..config.message_count {
+        let send_start = Instant::now();
+        match socket.send_to(&test_message, target_addr) {
+            Ok(_) => {
+                messages_sent += 1;
+                total_latency_us += send_start.elapsed().as_micros() as f64;
+            }
+            Err(_) => {}
+        }
+        if start_time.elapsed().as_secs() >= config.duration_secs {
+            break;
+        }
+    }
+
+    // Signal receiver to stop and join
+    receiver_done.store(true, Ordering::Relaxed);
+    let _ = receiver.join();
+    let messages_received = received_count.load(Ordering::Relaxed);
+
+    let duration = start_time.elapsed();
+    let throughput = (messages_sent as f64) / duration.as_secs_f64();
+    let avg_latency = if messages_sent > 0 {
+        total_latency_us / (messages_sent as f64)
+    } else {
+        0.0
+    };
+
+    Ok(TransportBenchmarkResult {
+        transport_name: "std::net::UdpSocket (sync)".to_string(),
         messages_sent,
         messages_received,
         duration,
@@ -777,6 +936,18 @@ fn run_transport_comparison() -> Result<(), Box<dyn std::error::Error>> {
     match benchmark_udp_ring_buffer_baseline(&config) {
         Ok(result) => results.push(result),
         Err(e) => println!("❌ UDP Ring Buffer Baseline benchmark failed: {}", e),
+    }
+
+    // --- Add std UDP ---
+    match benchmark_std_udp(&config) {
+        Ok(result) => results.push(result),
+        Err(e) => println!("❌ std::net::UdpSocket benchmark failed: {}", e),
+    }
+
+    // --- Add Tokio UDP ---
+    match benchmark_tokio_udp(&config) {
+        Ok(result) => results.push(result),
+        Err(e) => println!("❌ Tokio UDP benchmark failed: {}", e),
     }
 
     // Benchmark each transport

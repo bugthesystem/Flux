@@ -13,7 +13,7 @@ repository = "https://github.com/bugthesystem/flux"
 # Core async runtime and I/O
 monoio = { version = "0.2", optional = true }
 io-uring = { version = "0.7", optional = true }
-tokio = { version = "1.0", features = ["full"], optional = true }
+tokio = { version = "1", features = ["net", "rt-multi-thread"] }
 
 # Concurrency and data structures
 crossbeam = "0.8"
@@ -43,7 +43,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 
 # Testing and benchmarking
-criterion = { version = "0.6", optional = true }
+criterion = { version = "0.6", optional = true, features = ["html_reports"] }
 proptest = { version = "1.0", optional = true }
 static_assertions = "1.1"
 num_cpus = "1.16"
@@ -52,23 +52,6 @@ num_cpus = "1.16"
 criterion = { version = "0.6", features = ["html_reports"] }
 proptest = "1.0"
 tokio-test = "0.4"
-
-[features]
-default = ["std"]
-std = []
-tokio-runtime = ["tokio"]
-benchmarks = ["criterion"]
-property-tests = ["proptest"]
-io-uring = ["dep:monoio", "dep:io-uring"]
-skip_checksum_in_memory = []
-
-# Linux-specific optimizations
-linux_numa = ["dep:libnuma-sys"]
-linux_hugepages = []
-linux_affinity = []
-linux_io_uring = ["dep:monoio", "dep:io-uring"]
-linux_dpdk = []
-linux_optimized = ["linux_numa", "linux_hugepages", "linux_affinity", "linux_io_uring"]
 
 [profile.release]
 lto = true
@@ -127,6 +110,10 @@ path = "benches/bench_realistic_measurement.rs"
 name = "bench_verified_multithread"
 path = "benches/bench_verified_multithread.rs"
 
+[[bin]]
+name = "bench_simd_copy"
+path = "benches/bench_simd_copy.rs"
+
 [[example]]
 name = "example_basic_usage"
 path = "examples/example_basic_usage.rs"
@@ -146,5 +133,15 @@ path = "examples/example_linux_optimized.rs"
 [[example]]
 name = "fec_library_test"
 path = "examples/fec_library_test.rs"
+
+[features]
+default = ["std"]
+std = []
+linux_numa = ["dep:libnuma-sys"]
+linux_hugepages = []
+linux_affinity = []
+linux_io_uring = ["dep:monoio", "dep:io-uring"]
+linux_optimized = ["linux_numa", "linux_hugepages", "linux_affinity", "linux_io_uring"]
+skip_checksum_in_memory = []
 
  

@@ -322,6 +322,7 @@ impl ReliableUdpRingBufferTransport {
                 self.recv_window.ring.send_batch_naks_for_gaps(|start, end| {
                     self.send_batch_nak(start, end);
                 });
+
                 found;
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
