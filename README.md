@@ -93,24 +93,7 @@ for message in messages {
 }
 ```
 
-### High-Performance Configuration
-
-```rust
-use flux::disruptor::{RingBufferConfig, ring_buffer::MappedRingBuffer};
-
-let config = RingBufferConfig::new(1024 * 1024)?
-    .with_consumers(4)?
-    .with_optimal_batch_size(8192);
-
-let buffer = MappedRingBuffer::new_mapped(config)?;
-
-// Process large batches for maximum throughput
-if let Some((seq, slots)) = buffer.try_claim_slots(8192) {
-    // Batch processing logic
-    buffer.publish_batch(seq, slots.len());
-}
-```
-
+### Basic UDP Transport Usage
 
 ```rust
 use flux::{UdpRingBufferTransport, UdpTransportConfig};
