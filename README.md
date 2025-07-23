@@ -145,7 +145,7 @@ if let Some((data, _addr)) = transport.receive()? {
 | Reliable UDP (NAK, BTreeMap)     | 0.19                    | 100%         | Benchmark-only, sparse-friendly |
 
  **Notes:**
-- [1] The hybrid window (ring buffer + map) achieves the best of both worlds: fast in-order delivery and robust out-of-order handling.
+- [1] The hybrid window (ring buffer + btreemap) achieves the best of both worlds: fast in-order delivery and robust out-of-order handling.
 - See the `HybridWindow` implementation for details.
 > **⚠️ HEADS UP!** The `BTreeMap-based NAK transport` exists only for benchmark comparison and is not part of the main library API.
 
@@ -153,22 +153,6 @@ if let Some((data, _addr)) = transport.receive()? {
 - Batch size and buffer configuration significantly impact throughput
 - Memory mapping and cache-line alignment provide 10-20% improvements
 - Platform-specific optimizations can yield additional performance gains
-
-### Reliable UDP (Ring Buffer + BTreeMap) — Hybrid Window
-
-- Flux uses a hybrid receive window for reliable UDP:
-  - **Ring Buffer**: Handles in-order and near-in-order packets for O(1) delivery and cache efficiency.
-  - **Map (BTreeMap)**: Buffers packets that arrive far out-of-order (outside the current window).
-- **Decision logic:**
-  - If `seq` is within `[next_expected_seq, next_expected_seq + window_size)`, store in the ring buffer.
-  - If `seq` is outside this window, store in the map.
-  - On each delivery, check the map for the next expected sequence and move it into the ring buffer if present.
-- **Benefits:**
-  - Fast path for common in-order traffic.
-  - Robust handling of sparse, out-of-order arrivals.
-  - No slot overwrite or packet loss for extreme reordering.
-
-See `HybridWindow` in the codebase for implementation details.
 
 ## Installation
 
