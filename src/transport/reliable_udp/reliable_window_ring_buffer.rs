@@ -62,6 +62,7 @@ impl ReliableWindowRingBuffer {
     }
 
     /// Returns indices of in-order deliverable slots. Caller must copy data and mark slots as invalid.
+    #[allow(dead_code)]
     pub fn deliver_in_order(&self) -> Vec<usize> {
         let mut delivered = Vec::new();
         let mut seq = self.next_expected_seq;

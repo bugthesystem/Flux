@@ -1,7 +1,6 @@
 //! Linux-specific NUMA utilities
 
 use crate::error::{ Result, FluxError };
-use std::ptr;
 
 #[cfg(feature = "linux_numa")]
 use libnuma_sys::*;
@@ -46,7 +45,7 @@ impl NumaManager {
         }
     }
 
-    pub fn allocate_on_node(&self, size: usize, node: u32) -> Result<*mut u8> {
+    pub fn allocate_on_node(&self, _size: usize, _node: u32) -> Result<*mut u8> {
         #[cfg(feature = "linux_numa")]
         unsafe {
             let ptr = numa_alloc_onnode(size, node as i32);
@@ -90,7 +89,7 @@ impl NumaManager {
         }
     }
 
-    pub fn node_of_cpu(&self, cpu: u32) -> u32 {
+    pub fn node_of_cpu(&self, _cpu: u32) -> u32 {
         #[cfg(feature = "linux_numa")]
         unsafe {
             numa_node_of_cpu(cpu as i32) as u32

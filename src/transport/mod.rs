@@ -4,7 +4,7 @@
 //! - **reliable_udp**: Reliable UDP with NAK-based retransmission (PRODUCTION-READY)
 //! - **kernel_bypass_zero_copy**: True zero-copy using io_uring/DMA (EXPERIMENTAL)
 
-pub mod kernel_bypass_zero_copy;
+pub mod kernel_bypass;
 pub mod reliable_udp;
 pub mod unified;
 
@@ -16,6 +16,7 @@ use std::time::Duration;
 use crate::error::{ Result, FluxError };
 use crate::disruptor::{ RingBuffer, RingBufferConfig };
 use crate::disruptor::ring_buffer::MappedRingBuffer;
+
 #[cfg(all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages")))]
 use crate::disruptor::ring_buffer_linux::LinuxRingBuffer;
 
@@ -48,7 +49,8 @@ impl RingBufferOps for RingBuffer {
         self.try_consume_batch(consumer_id, max_count)
     }
     fn publish_batch(&self, start_seq: u64, count: usize) {
-        self.publish_batch(start_seq, count)
+        // Call the actual publish method on the ring buffer
+        self.publish_batch_ultra(start_seq, count);
     }
 }
 
@@ -57,7 +59,7 @@ impl RingBufferOps for MappedRingBuffer {
         &mut self,
         count: usize
     ) -> Option<(u64, &mut [crate::disruptor::MessageSlot])> {
-        self.try_claim_slots(count)
+        MappedRingBuffer::try_claim_slots(self, count)
     }
     fn try_consume_batch(
         &self,
@@ -68,7 +70,8 @@ impl RingBufferOps for MappedRingBuffer {
         slice.iter().collect()
     }
     fn publish_batch(&self, start_seq: u64, count: usize) {
-        self.publish_batch(start_seq, count)
+        // Call the actual publish method on the mapped ring buffer
+        self.publish_batch(start_seq, count);
     }
 }
 
@@ -78,7 +81,7 @@ impl RingBufferOps for LinuxRingBuffer {
         &mut self,
         count: usize
     ) -> Option<(u64, &mut [crate::disruptor::MessageSlot])> {
-        self.try_claim_slots(count)
+        LinuxRingBuffer::try_claim_slots(self, count)
     }
     fn try_consume_batch(
         &self,
@@ -89,7 +92,8 @@ impl RingBufferOps for LinuxRingBuffer {
         slice.iter().collect()
     }
     fn publish_batch(&self, start_seq: u64, count: usize) {
-        self.publish_batch(start_seq, count)
+        // Call the actual publish method on the Linux ring buffer
+        self.publish_batch(start_seq, count);
     }
 }
 
@@ -241,8 +245,6 @@ impl Default for UdpTransportConfig {
 pub struct UdpRingBufferTransport {
     /// UDP socket
     socket: UdpSocket,
-    /// Configuration
-    config: UdpTransportConfig,
     /// Send ring buffer (platform auto-selected)
     send_buffer: PlatformRingBuffer,
     /// Receive ring buffer (platform auto-selected)
@@ -314,7 +316,6 @@ impl UdpRingBufferTransport {
 
         Ok(Self {
             socket,
-            config,
             send_buffer,
             recv_buffer,
             running: Arc::new(AtomicU64::new(0)),
@@ -383,7 +384,6 @@ impl UdpRingBufferTransport {
 
         Ok(Self {
             socket,
-            config,
             send_buffer,
             recv_buffer,
             running: Arc::new(AtomicU64::new(0)),

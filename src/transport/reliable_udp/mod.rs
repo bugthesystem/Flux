@@ -138,7 +138,7 @@ pub struct ReliableUdpRingBufferTransport {
     recv_window: HybridWindow,
     window_size: usize,
     next_send_seq: u64,
-    next_recv_seq: u64,
+    _next_recv_seq: u64,
     remote_addr: SocketAddr,
 }
 
@@ -179,7 +179,7 @@ impl ReliableUdpRingBufferTransport {
             recv_window: HybridWindow::new(window_size, 0),
             window_size,
             next_send_seq: 0,
-            next_recv_seq: 0,
+            _next_recv_seq: 0,
             remote_addr,
         })
     }
@@ -323,7 +323,7 @@ impl ReliableUdpRingBufferTransport {
                     self.send_batch_nak(start, end);
                 });
 
-                found;
+                let _ = found;
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 // No UDP data available
@@ -337,7 +337,6 @@ impl ReliableUdpRingBufferTransport {
 
     /// Retransmit lost packets (on NAK)
     pub fn retransmit(&mut self, lost_seq: u64) {
-        let idx = (lost_seq as usize) % self.window_size;
         // Try to consume the slot for retransmission
         let msgs = self.send_window.try_consume_batch(0, self.window_size);
         for slot in msgs {

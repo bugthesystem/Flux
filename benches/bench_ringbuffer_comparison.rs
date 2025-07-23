@@ -143,13 +143,12 @@ fn bench_mapped_ringbuffer_with_config(cfg: &BenchmarkConfig) -> BenchmarkResult
         let batch_size = cfg.batch_size.min(cfg.message_count - messages_sent);
         let send_start = Instant::now();
         let claimed = buffer.try_claim_slots(batch_size);
-        let mut published_count = 0;
         if let Some((seq, slots)) = claimed {
             for slot in slots.iter_mut() {
                 slot.set_sequence(seq);
                 slot.set_data(&test_message);
             }
-            published_count = slots.len();
+            let published_count = slots.len();
             buffer.publish_batch(seq, published_count);
             messages_sent += published_count;
             total_latency_us += send_start.elapsed().as_micros() as f64;
@@ -197,13 +196,12 @@ fn bench_linux_ringbuffer_with_config(cfg: &BenchmarkConfig) -> BenchmarkResult 
         let batch_size = cfg.batch_size.min(cfg.message_count - messages_sent);
         let send_start = Instant::now();
         let claimed = buffer.try_claim_slots(batch_size);
-        let mut published_count = 0;
         if let Some((seq, slots)) = claimed {
             for slot in slots.iter_mut() {
                 slot.set_sequence(seq);
                 slot.set_data(&test_message);
             }
-            published_count = slots.len();
+            let published_count = slots.len();
             buffer.publish_batch(seq, published_count);
             messages_sent += published_count;
             total_latency_us += send_start.elapsed().as_micros() as f64;

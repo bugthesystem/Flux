@@ -85,10 +85,9 @@ impl TransportBenchmarkResult {
 mod reliable_udp_btreemap {
     use std::net::{ SocketAddr, UdpSocket };
     use std::sync::{ Arc, Mutex };
-    use std::sync::atomic::{ AtomicU64, Ordering };
+    use std::sync::atomic::{ AtomicU64 };
     use std::collections::{ HashMap, BTreeMap };
-    use std::time::{ Duration, Instant, SystemTime, UNIX_EPOCH };
-    use std::thread;
+    use std::time::{ Instant, SystemTime, UNIX_EPOCH };
 
     // --- Types and implementation copied from src/transport/reliable_udp.rs ---
     #[derive(Debug, Clone)]
@@ -368,10 +367,7 @@ fn benchmark_reliable_udp(
         session_timeout_ms: constants::SESSION_TIMEOUT_MS,
     };
 
-    let mut transport = reliable_udp_btreemap::ReliableUdpTransport::new(
-        config.bind_addr,
-        udp_config
-    )?;
+    let transport = reliable_udp_btreemap::ReliableUdpTransport::new(config.bind_addr, udp_config)?;
 
     // Create test message
     let test_message = vec![0xCC; config.message_size];
@@ -381,11 +377,11 @@ fn benchmark_reliable_udp(
     let mut total_latency_us = 0.0;
 
     // Create session for reliable communication
-    let session = transport.create_session(12345, config.target_addr);
+    let _session = transport.create_session(12345, config.target_addr);
     let session_id = 12345;
 
     // Send messages with reliability guarantees
-    for i in 0..config.message_count {
+    for _i in 0..config.message_count {
         let send_start = Instant::now();
 
         match transport.send(session_id, &test_message) {
@@ -439,7 +435,7 @@ fn benchmark_kernel_bypass_zero_copy(
     let mut total_latency_us = 0.0;
 
     // Send messages with zero-copy semantics
-    for i in 0..config.message_count {
+    for _i in 0..config.message_count {
         let send_start = Instant::now();
 
         // Note: This is a placeholder - actual implementation needs proper zero-copy API
@@ -666,7 +662,7 @@ fn benchmark_reliable_udp_ringbuffer(
             window_size
         ).unwrap();
         while !receiver_done_clone.load(Ordering::Relaxed) {
-            receiver_transport.receive_batch_with(batch_size, |msg| {
+            receiver_transport.receive_batch_with(batch_size, |_msg| {
                 received_count_clone.fetch_add(1, Ordering::Relaxed);
             });
         }

@@ -36,7 +36,7 @@ impl Default for BenchmarkConfig {
 struct BenchmarkResults {
     messages_sent: u64,
     messages_received: u64,
-    duration: Duration,
+    _duration: Duration,
     throughput_sent: f64,
     throughput_received: f64,
     processing_rate: f64,
@@ -248,7 +248,7 @@ fn run_benchmark(config: &BenchmarkConfig) -> Result<BenchmarkResults, Box<dyn s
     Ok(BenchmarkResults {
         messages_sent: sent,
         messages_received: received,
-        duration,
+        _duration: duration,
         throughput_sent,
         throughput_received,
         processing_rate,

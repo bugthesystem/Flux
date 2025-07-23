@@ -17,7 +17,8 @@ use std::net::SocketAddr;
 use crate::error::{ Result, FluxError };
 
 use crate::transport::{
-    kernel_bypass_zero_copy::ZeroCopyTransport,
+    kernel_bypass::kernel_bypass_zero_copy::ZeroCopyTransport,
+    reliable_udp::ReliableUdpRingBufferTransport,
     UdpRingBufferTransport,
     UdpTransportConfig,
 };
@@ -67,7 +68,7 @@ pub enum UnifiedTransport {
     /// True zero-copy transport (Linux only)
     UltraLowLatency(ZeroCopyTransport),
     /// Reliable UDP with NAK retransmission
-    Reliable(UdpRingBufferTransport),
+    Reliable(ReliableUdpRingBufferTransport),
     /// Basic UDP transport
     Basic(UdpRingBufferTransport),
 }
@@ -102,11 +103,7 @@ impl UnifiedTransport {
                 }
             }
             TransportSelection::Reliable => {
-                let config = UdpTransportConfig {
-                    local_addr: bind_addr.to_string(),
-                    ..Default::default()
-                };
-                let transport = UdpRingBufferTransport::new(config)?;
+                let transport = ReliableUdpRingBufferTransport::new(bind_addr, bind_addr, 1024)?;
                 println!("🛡️  Created reliable UDP transport with NAK retransmission");
                 Ok(Self::Reliable(transport))
             }
@@ -216,8 +213,10 @@ impl UnifiedTransport {
                 }
             }
             Self::Reliable(transport) => {
-                // Use the correct signature for UdpRingBufferTransport
-                transport.send(data, addr)
+                transport
+                    .send(data)
+                    .map(|_| ())
+                    .map_err(FluxError::from)
             }
             Self::Basic(transport) => transport.send(data, addr),
         }
