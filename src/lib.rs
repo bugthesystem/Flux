@@ -4,8 +4,7 @@ pub mod constants;
 pub mod disruptor;
 pub mod error;
 pub mod optimizations;
-pub mod performance;
-pub mod reliability;
+pub mod monitoring;
 pub mod transport;
 pub mod utils;
 

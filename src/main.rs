@@ -8,7 +8,7 @@ use flux::{
     disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType },
     utils::{ get_system_info, pin_to_cpu },
     utils::time::Timer,
-    performance::PerformanceMonitor,
+    monitoring::PerformanceMonitor,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

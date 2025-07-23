@@ -1,4 +1,4 @@
-//! Performance monitoring and metrics
+//! Monitoring and metrics
 
 use std::sync::atomic::{ AtomicU64, Ordering };
 use std::time::Instant;
@@ -74,33 +74,6 @@ impl PerformanceMonitor {
 impl Default for PerformanceMonitor {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Production configuration
-#[derive(Debug, Clone)]
-pub struct ProductionConfig {
-    /// Enable huge pages
-    pub huge_pages: bool,
-    /// NUMA node
-    pub numa_node: Option<usize>,
-    /// CPU cores to isolate
-    pub cpu_isolation: Vec<usize>,
-    /// Lock memory
-    pub memory_lock: bool,
-    /// Real-time priority
-    pub realtime_priority: Option<i32>,
-}
-
-impl Default for ProductionConfig {
-    fn default() -> Self {
-        Self {
-            huge_pages: false,
-            numa_node: None,
-            cpu_isolation: Vec::new(),
-            memory_lock: false,
-            realtime_priority: None,
-        }
     }
 }
 

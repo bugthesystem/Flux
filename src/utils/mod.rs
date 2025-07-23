@@ -4,10 +4,8 @@
 //! and helper functions used throughout the library.
 
 pub mod cpu;
-pub mod cpu_simple;
 pub mod memory;
 pub mod time;
-pub mod checksum;
 pub mod numa;
 
 #[cfg(
@@ -22,7 +20,7 @@ pub mod linux_numa;
 // NEON SIMD functionality moved to optimizations/advanced_simd.rs
 
 // Re-export commonly used utilities
-pub use cpu_simple::{
+pub use cpu::{
     set_cpu_affinity,
     get_cpu_count,
     pin_to_cpu,
@@ -31,7 +29,6 @@ pub use cpu_simple::{
 };
 pub use memory::{ allocate_aligned, allocate_huge_pages, lock_memory };
 pub use time::{ get_nanos, get_tsc, TimestampProvider };
-pub use checksum::{ xxhash32, xxhash64, crc32 };
 pub use numa::{ allocate_with_cpu_affinity, allocate_local_cpu };
 
 // Linux-specific optimizations
