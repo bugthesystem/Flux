@@ -36,7 +36,7 @@ fn spsc_benchmark() {
         thread::spawn(move || {
             let mut received = 0;
             while received < MESSAGES {
-                let mut ring = ring.lock().unwrap();
+                let ring = ring.lock().unwrap();
                 let msgs = ring.try_consume_batch(0, 64);
                 if !msgs.is_empty() {
                     received += msgs.len();
@@ -83,7 +83,7 @@ fn mpsc_benchmark() {
         thread::spawn(move || {
             let mut received = 0;
             while received < MESSAGES {
-                let mut ring = ring.lock().unwrap();
+                let ring = ring.lock().unwrap();
                 let msgs = ring.try_consume_batch(0, 64);
                 if !msgs.is_empty() {
                     received += msgs.len();
@@ -142,12 +142,10 @@ fn mpmc_benchmark() {
         let total_received = total_received.clone();
         consumers.push(
             thread::spawn(move || {
-                let mut received = 0;
                 while total_received.load(std::sync::atomic::Ordering::Relaxed) < MESSAGES {
-                    let mut ring = ring.lock().unwrap();
+                    let ring = ring.lock().unwrap();
                     let msgs = ring.try_consume_batch(0, 64);
                     if !msgs.is_empty() {
-                        received += msgs.len();
                         total_received.fetch_add(msgs.len(), std::sync::atomic::Ordering::Relaxed);
                     }
                 }

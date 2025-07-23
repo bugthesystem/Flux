@@ -2,7 +2,7 @@ use std::time::{ Duration, Instant };
 use std::env;
 use flux::disruptor::{ RingBuffer, RingBufferConfig, WaitStrategyType };
 use flux::utils::{ pin_to_cpu };
-use flux::optimizations::macos_optimizations;
+use flux::utils::cpu as macos_optimizations;
 
 // Optimized configuration for macOS
 fn create_macos_optimized_config() -> RingBufferConfig {

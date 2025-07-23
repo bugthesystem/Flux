@@ -2,12 +2,8 @@ use std::sync::atomic::{ AtomicU64, Ordering };
 use std::ptr;
 use crate::disruptor::{ MessageSlot, RingBufferConfig };
 use crate::utils::LinuxNumaOptimizer;
-use crate::optimizations::linux_optimizations::{
-    linux_lock_memory,
-    linux_allocate_huge_pages,
-    linux_pin_to_cpu,
-    linux_set_max_priority,
-};
+use crate::utils::memory::{ linux_lock_memory, linux_allocate_huge_pages };
+use crate::utils::cpu::{ linux_pin_to_cpu, linux_set_max_priority };
 
 /// Linux-optimized ring buffer with NUMA awareness and huge pages
 pub struct LinuxRingBuffer {

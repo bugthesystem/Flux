@@ -3,11 +3,11 @@
 pub mod constants;
 pub mod disruptor;
 pub mod error;
-pub mod optimizations;
 pub mod monitoring;
 pub mod transport;
 pub mod utils;
 pub mod reliability;
+pub mod platform;
 
 // Re-export main components
 pub use disruptor::{ RingBuffer, RingBufferConfig, MessageSlot, WaitStrategyType };

@@ -7,6 +7,7 @@ pub mod cpu;
 pub mod memory;
 pub mod time;
 pub mod numa;
+pub mod optimizations;
 
 #[cfg(
     all(

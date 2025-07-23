@@ -274,48 +274,6 @@ pub unsafe fn prefetch_data(ptr: *const u8, offset: usize) {
     }
 }
 
-/// macOS-specific optimizations for Apple Silicon
-#[cfg(target_os = "macos")]
-pub mod macos_optimizations {
-    use super::*;
-
-    /// Set thread priority for real-time performance
-    pub fn set_thread_priority() -> Result<()> {
-        // macOS thread priority setting
-        // This is a simplified implementation
-        Ok(())
-    }
-
-    /// Enable Grand Central Dispatch for parallel processing
-    pub fn enable_gcd_optimization() -> Result<()> {
-        // GCD optimization for Apple Silicon
-        Ok(())
-    }
-
-    /// Apple Silicon specific memory allocation
-    pub fn allocate_apple_silicon_memory(size: usize) -> Result<*mut u8> {
-        // Use aligned allocation for Apple Silicon
-        let layout = std::alloc::Layout
-            ::from_size_align(
-                size,
-                128 // 128-byte alignment for Apple Silicon
-            )
-            .map_err(|e| crate::error::FluxError::config(&format!("Layout error: {:?}", e)))?;
-
-        let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
-        Ok(ptr)
-    }
-
-    /// Apple Silicon cache line size
-    pub const APPLE_SILICON_CACHE_LINE: usize = 128;
-
-    /// Apple Silicon L1 cache size per core
-    pub const APPLE_SILICON_L1_CACHE: usize = 64 * 1024; // 64KB
-
-    /// Apple Silicon L2 cache size (shared)
-    pub const APPLE_SILICON_L2_CACHE: usize = 12 * 1024 * 1024; // 12MB
-}
-
 /// Get CPU information for optimization decisions
 pub fn get_cpu_info() -> CpuInfo {
     let simd_level = get_simd_level();
@@ -485,7 +443,7 @@ pub fn get_physical_cpu_count() -> usize {
 /// Set CPU affinity for the current thread
 #[cfg(target_os = "macos")]
 pub fn set_cpu_affinity(cpu_id: usize) -> Result<()> {
-    use crate::optimizations::macos_optimizations::ThreadAffinity;
+    use crate::utils::cpu::ThreadAffinity;
     ThreadAffinity::set_thread_affinity(cpu_id)
 }
 
@@ -536,7 +494,7 @@ pub fn set_cpu_affinity(_cpu_id: usize) -> Result<()> {
 pub fn is_thread_affinity_supported() -> bool {
     #[cfg(target_os = "macos")]
     {
-        use crate::optimizations::macos_optimizations::ThreadAffinity;
+        use crate::utils::cpu::ThreadAffinity;
         ThreadAffinity::is_supported()
     }
     #[cfg(target_os = "linux")]
@@ -553,7 +511,7 @@ pub fn is_thread_affinity_supported() -> bool {
 pub fn get_thread_affinity_info() -> String {
     #[cfg(target_os = "macos")]
     {
-        use crate::optimizations::macos_optimizations::ThreadAffinity;
+        use crate::utils::cpu::ThreadAffinity;
         ThreadAffinity::get_affinity_info()
     }
     #[cfg(target_os = "linux")]
@@ -760,6 +718,20 @@ pub fn nano_sleep(nanos: u64) {
     std::thread::sleep(std::time::Duration::from_nanos(nanos));
 }
 // --- END MERGE ---
+
+// --- Platform-specific CPU utilities (hybrid structure) ---
+#[cfg(target_os = "linux")]
+mod platform_impl {
+    pub use crate::platform::linux::cpu::*;
+}
+#[cfg(target_os = "macos")]
+mod platform_impl {
+    pub use crate::platform::macos::cpu::*;
+}
+// Add more platforms as you implement them
+
+pub use platform_impl::*;
+// --- End platform-specific wiring ---
 
 #[cfg(test)]
 mod tests {
