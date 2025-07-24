@@ -54,7 +54,7 @@ fn run_server(addr: &str, remote_addr: &str) -> Result<(), Box<dyn std::error::E
     let mut last_message_time = Instant::now();
     let mut end_received = false;
 
-    println!("[SERVER INVESTIGATE] Entering receive loop");
+    println!("[SERVER] Entering receive loop");
     loop {
         let recv_result = transport.receive();
         match recv_result {
@@ -91,7 +91,7 @@ fn run_server(addr: &str, remote_addr: &str) -> Result<(), Box<dyn std::error::E
                 last_message_time = Instant::now();
             }
             None => {
-                println!("[SERVER INVESTIGATE] transport.receive() returned None");
+                println!("[SERVER] transport.receive() returned None");
                 if last_message_time.elapsed().as_secs_f32() > 2.0 {
                     println!("[Server] Timeout: No message received for 2 seconds. Exiting.");
                     break;
