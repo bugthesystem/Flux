@@ -202,20 +202,37 @@ See [SAFETY.md](./SAFETY.md) for detailed documentation of all unsafe code usage
 
 ## Examples and Benchmarks
 
-```bash
-# Basic usage examples
-cargo run --example basic_usage
-cargo run --example udp_transport
-cargo run --example reliable_messaging
+Below is a table of available examples and benchmarks. For best performance, always use `--release`.
 
-# Performance benchmarks
-cargo run --release --bin bench_ring_buffer_peak      # Maximum IPC throughput
-cargo run --release --bin bench_realistic_workload    # Production scenarios
-cargo run --release --bin bench_transport_comparison  # Network performance
+### Examples
+| Name                              | Description                                 | Command to Run (Release)                                 |
+|------------------------------------|---------------------------------------------|----------------------------------------------------------|
+| example_basic_usage                | Ring buffer, batch, producer-consumer demo  | `cargo run --release --example example_basic_usage`      |
+| example_udp_transport              | Basic UDP message transport                 | `cargo run --release --example example_udp_transport`    |
+| example_udp_average                | UDP, client sends numbers, server averages  | `cargo run --release --example example_udp_average`      |
+| example_reliable_udp_transport     | Reliable UDP echo test                      | `cargo run --release --example example_reliable_udp_transport` |
+| example_reliable_udp_batch_average | Reliable UDP, batch send/receive, average   | `cargo run --release --example example_reliable_udp_batch_average` |
+| example_minimal_raw                | Minimal raw ring buffer usage               | `cargo run --release --example example_minimal_raw`      |
+| example_linux_optimized            | Linux-optimized ring buffer usage           | `cargo run --release --example example_linux_optimized`  |
+| fec_library_test                   | FEC (Forward Error Correction) test         | `cargo run --release --example fec_library_test`         |
+| example_spsc_average               | SPSC average calculator                     | `cargo run --release --example example_spsc_average`     |
+| example_mpmc_average               | MPMC average calculator                     | `cargo run --release --example example_mpmc_average`     |
+| example_reliable_udp_average       | Reliable UDP average calculator             | `cargo run --release --example example_reliable_udp_average` |
 
-# Platform-specific optimizations
-cargo run --release --features linux_optimized --bin bench_linux_numa
-```
+### Benches
+| Name                              | Description                                 | Command to Run (Release)                                 |
+|------------------------------------|---------------------------------------------|----------------------------------------------------------|
+| bench_flux                        | General Flux benchmarks                     | `cargo bench --bench bench_flux`                         |
+| bench_simple                      | Simple ring buffer benchmark                | `cargo bench --bench bench_simple`                       |
+| bench_extreme                     | Extreme throughput benchmark                | `cargo run --release --bin bench_extreme`                |
+| bench_macos_optimized             | macOS-optimized ring buffer benchmark       | `cargo run --release --bin bench_macos_optimized`        |
+| bench_profile_analysis            | Profile analysis benchmark                  | `cargo run --release --bin bench_profile_analysis`        |
+| bench_extreme_batching            | Extreme batching benchmark                  | `cargo run --release --bin bench_extreme_batching`       |
+| bench_transport_comparison         | Network transport performance               | `cargo run --release --bin bench_transport_comparison`   |
+| bench_ringbuffer_comparison        | Ring buffer comparison benchmark            | `cargo run --release --bin bench_ringbuffer_comparison`  |
+| bench_ringbuffer_multithreaded     | Multithreaded ring buffer benchmark         | `cargo run --release --bin bench_ringbuffer_multithreaded`|
+| bench_realistic_measurement        | Realistic measurement benchmark             | `cargo run --release --bin bench_realistic_measurement`  |
+| bench_verified_multithread         | Verified multithreaded benchmark            | `cargo run --release --bin bench_verified_multithread`   |
 
 ## Roadmap
 
@@ -236,7 +253,6 @@ cargo run --release --features linux_optimized --bin bench_linux_numa
 
 We welcome contributions! Please:
 
-1. Read our [Contributing Guide](./CONTRIBUTING.md)
 2. Check existing issues before creating new ones
 3. Ensure all tests pass: `cargo test --all-features`
 4. Run benchmarks to verify performance: `cargo run --release --bin bench_all`
