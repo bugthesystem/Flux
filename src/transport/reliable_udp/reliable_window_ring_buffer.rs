@@ -141,11 +141,11 @@ impl HybridWindow {
         }
     }
     pub fn deliver_in_order_with<F: FnMut(&[u8])>(&mut self, mut f: F) {
-        self.ring.deliver_in_order_with(|msg| f(msg));
+        self.ring.deliver_in_order_with(|msg| { f(msg) });
         // After each delivery, check the map for the next expected seq
         while let Some(data) = self.map.remove(&self.ring.next_expected_seq) {
             self.ring.insert(self.ring.next_expected_seq, &data);
-            self.ring.deliver_in_order_with(|msg| f(msg));
+            self.ring.deliver_in_order_with(|msg| { f(msg) });
         }
     }
 }
