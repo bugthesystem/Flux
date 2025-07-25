@@ -1,0 +1,12 @@
+[package]
+name = "fuzzy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+flux = { path = ".." }
+rand = "0.9"
+
+[dev-dependencies]
+rstest = "0.25"
+proptest = "1.4"

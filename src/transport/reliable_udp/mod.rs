@@ -4,15 +4,24 @@
 //! 1. Sequence numbering for packet ordering and loss detection
 //! 2. NAK (Negative Acknowledgment) for efficient retransmission requests
 //! 3. Sliding window flow control
-//! 4. Timeout-based recovery for lost NAKs
-//! 5. Multicast-friendly design (no ACKs, only NAKs)
-//! 6. Integration with ring buffer
+//! 4. Multicast-friendly design (no ACKs, only NAKs)
+//! 5. Integration with ring buffer
 
 use std::net::{ SocketAddr, UdpSocket };
 use std::time::{ Instant, SystemTime, UNIX_EPOCH };
 use crate::disruptor::{ RingBufferConfig, RingBuffer, RingBufferEntry };
 use crate::transport::reliable_udp::reliable_window_ring_buffer::HybridWindow;
 use crc32fast::Hasher;
+use std::sync::atomic::{ AtomicBool, Ordering };
+
+pub static DEBUG_NAK: AtomicBool = AtomicBool::new(false);
+macro_rules! debug_nak {
+    ($($arg:tt)*) => {
+        if DEBUG_NAK.load(Ordering::Relaxed) {
+            println!($($arg)*);
+        }
+    };
+}
 
 mod reliable_window_ring_buffer;
 
@@ -94,19 +103,6 @@ impl ReliableUdpHeader {
         temp_header.calculate_checksum(payload);
         temp_header.checksum == self.checksum
     }
-}
-
-/// Packet stored in retransmission buffer
-#[derive(Debug, Clone)]
-pub struct RetransmissionPacket {
-    /// Complete packet data (header + payload)
-    pub data: Vec<u8>,
-    /// Send timestamp
-    pub sent_time: Instant,
-    /// Number of retransmission attempts
-    pub attempts: u32,
-    /// Destination address
-    pub addr: SocketAddr,
 }
 
 impl TryFrom<u8> for MessageType {
@@ -392,11 +388,13 @@ impl ReliableUdpRingBufferTransport {
 
     /// Retransmit lost packets (on NAK)
     pub fn retransmit(&mut self, lost_seq: u64) {
+        debug_nak!("[RETRANS] Retransmitting seq {}", lost_seq);
         // Try to consume the slot for retransmission
         let msgs = self.send_window.try_consume_batch(0, self.window_size);
         for slot in msgs {
             if slot.sequence() == lost_seq {
                 let pkt_data = slot.data();
+                debug_nak!("[RETRANS] Actually sending retransmitted seq {}", lost_seq);
                 let _ = self.socket.send_to(pkt_data, self.remote_addr);
                 break;
             }
@@ -405,6 +403,7 @@ impl ReliableUdpRingBufferTransport {
 
     /// Send a NAK for a missing sequence number
     pub fn send_nak(&self, missing_seq: u64) {
+        debug_nak!("[NAK] Sending NAK for seq {}", missing_seq);
         let mut header = ReliableUdpHeader::new(0, missing_seq, MessageType::Nak, 0);
         header.calculate_checksum(&[]);
         let mut packet = Vec::with_capacity(ReliableUdpHeader::SIZE);
@@ -416,6 +415,7 @@ impl ReliableUdpRingBufferTransport {
 
     /// Send a batch NAK for a range of missing sequence numbers
     pub fn send_batch_nak(&self, start_seq: u64, end_seq: u64) {
+        debug_nak!("[NAK] Sending batch NAK for seqs {}-{}", start_seq, end_seq);
         let mut packet = Vec::with_capacity(ReliableUdpHeader::SIZE + 16);
         let mut header = ReliableUdpHeader::new(0, start_seq, MessageType::Nak, 16);
         header.calculate_checksum(&[]);
@@ -429,6 +429,7 @@ impl ReliableUdpRingBufferTransport {
 
     /// Process incoming NAKs and retransmit as needed (batch-aware)
     pub fn process_naks(&mut self) {
+        debug_nak!("[NAK] Processing NAKs");
         let mut buf = [0u8; 2048];
         if let Ok((len, _src)) = self.socket.recv_from(&mut buf) {
             if len < ReliableUdpHeader::SIZE {
@@ -436,9 +437,13 @@ impl ReliableUdpRingBufferTransport {
             }
             let header = ReliableUdpHeader::from_bytes(&buf[..ReliableUdpHeader::SIZE]);
             if let Some(h) = header {
-                if h.msg_type == (MessageType::Nak as u8) {
+                let msg_type = h.msg_type;
+                let sequence = h.sequence;
+                let payload_len = h.payload_len;
+                if msg_type == (MessageType::Nak as u8) {
+                    debug_nak!("[SENDER] Received NAK: seq={} payload_len={}", sequence, payload_len);
                     // Batch NAK: payload is 16 bytes (start_seq, end_seq)
-                    if h.payload_len == 16 && len >= ReliableUdpHeader::SIZE + 16 {
+                    if payload_len == 16 && len >= ReliableUdpHeader::SIZE + 16 {
                         let start_seq = u64::from_le_bytes(
                             buf[ReliableUdpHeader::SIZE..ReliableUdpHeader::SIZE + 8]
                                 .try_into()
@@ -449,10 +454,11 @@ impl ReliableUdpRingBufferTransport {
                                 .try_into()
                                 .unwrap()
                         );
+                        debug_nak!("[SENDER] Received batch NAK: {}-{}", start_seq, end_seq);
                         self.retransmit_batch(start_seq, end_seq);
                     } else {
                         // Legacy single NAK
-                        self.retransmit(h.sequence);
+                        self.retransmit(sequence);
                     }
                 }
             }
@@ -461,11 +467,13 @@ impl ReliableUdpRingBufferTransport {
 
     /// Retransmit a batch of lost packets (on batch NAK)
     pub fn retransmit_batch(&mut self, start_seq: u64, end_seq: u64) {
+        debug_nak!("[RETRANS] Retransmitting batch seqs {}-{}", start_seq, end_seq);
         let msgs = self.send_window.try_consume_batch(0, self.window_size);
         for slot in msgs {
             let seq = slot.sequence();
             if seq >= start_seq && seq <= end_seq {
                 let pkt_data = slot.data();
+                debug_nak!("[RETRANS] Actually sending retransmitted seq {} (batch)", seq);
                 let _ = self.socket.send_to(pkt_data, self.remote_addr);
             }
         }

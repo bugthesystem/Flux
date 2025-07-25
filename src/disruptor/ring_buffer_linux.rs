@@ -5,7 +5,26 @@ use crate::utils::LinuxNumaOptimizer;
 use crate::utils::memory::{ linux_lock_memory, linux_allocate_huge_pages };
 use crate::utils::cpu::{ linux_pin_to_cpu, linux_set_max_priority };
 
-/// Linux-optimized ring buffer with NUMA awareness and huge pages
+/// Linux-optimized ring buffer with NUMA awareness and huge pages.
+///
+/// This implementation is designed to take advantage of Linux-specific features
+/// for maximum performance in high-throughput, low-latency scenarios.
+///
+/// ## NUMA (Non-Uniform Memory Access) Awareness
+///
+/// On systems with multiple CPU sockets, memory is divided into NUMA nodes.
+/// Accessing memory on the same NUMA node as the running CPU is significantly
+/// faster than accessing memory on a different node. This ring buffer can be
+/// configured to allocate its memory on a specific NUMA node, which can be
+/// beneficial when pinning threads to specific CPU cores.
+///
+/// ## Huge Pages
+///
+/// Huge pages are larger memory pages (typically 2MB or 1GB) that can reduce
+/// the overhead of virtual memory management. By using huge pages, the number
+/// of TLB (Translation Lookaside Buffer) misses is reduced, which can lead to
+/// significant performance improvements for applications that access large
+/// amounts of memory, such as this ring buffer.
 pub struct LinuxRingBuffer {
     /// Memory-mapped buffer
     buffer: *mut MessageSlot,
@@ -67,24 +86,22 @@ impl LinuxRingBuffer {
         // Allocate buffer with Linux optimizations
         let buffer = if config.use_huge_pages {
             // Use huge pages if requested
-            linux_allocate_huge_pages(buffer_size)?
+            linux_allocate_huge_pages(buffer_size).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to allocate huge pages: {}", e)))?
         } else if let Some(ref numa) = numa_optimizer {
             // Use NUMA-aware allocation
             unsafe {
                 numa.allocate_on_node(buffer_size, 0)
-            } // Allocate on node 0
+            }.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to allocate NUMA-aware memory: {}", e)))?
         } else {
             // Fallback to regular allocation
             unsafe {
-                libc::malloc(buffer_size) as *mut MessageSlot
+                let ptr = libc::malloc(buffer_size) as *mut MessageSlot;
+                if ptr.is_null() {
+                    return Err(std::io::Error::new(std::io::ErrorKind::Other, "Failed to allocate memory with malloc"));
+                }
+                ptr
             }
         };
-
-        if buffer.is_null() {
-            return Err(
-                std::io::Error::new(std::io::ErrorKind::Other, "Failed to allocate ring buffer")
-            );
-        }
 
         // Lock memory to prevent paging
         linux_lock_memory(buffer as *mut u8, buffer_size)?;
@@ -250,12 +267,14 @@ impl Drop for LinuxRingBuffer {
             self.size,
             self.numa_optimizer.is_some()
         );
-        if let Some(ref numa) = self.numa_optimizer {
-            let buffer_size = self.size * std::mem::size_of::<MessageSlot>();
-            numa.free(self.buffer);
-        } else {
-            unsafe {
-                libc::free(self.buffer as *mut libc::c_void);
+        if !self.buffer.is_null() {
+            if let Some(ref numa) = self.numa_optimizer {
+                let buffer_size = self.size * std::mem::size_of::<MessageSlot>();
+                numa.free(self.buffer);
+            } else {
+                unsafe {
+                    libc::free(self.buffer as *mut libc::c_void);
+                }
             }
         }
     }

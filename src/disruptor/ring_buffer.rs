@@ -68,45 +68,7 @@ use std::arch::x86_64::{ _mm256_loadu_si256, _mm256_storeu_si256, __m256i };
 #[cfg(all(target_os = "linux", any(feature = "linux_numa", feature = "linux_hugepages")))]
 pub mod ring_buffer_linux;
 
-/// Cache-line padded producer sequence to prevent false sharing
-/// Uses 128-byte alignment to prevent false sharing on modern Intel CPUs
-/// that prefetch two cache lines at a time
-#[repr(align(128))]
-pub struct PaddedProducerSequence {
-    /// Producer sequence (128-byte aligned)
-    pub sequence: AtomicU64,
-    /// Padding to ensure 128-byte alignment
-    _padding: [u8; 128 - 8],
-}
-
-impl PaddedProducerSequence {
-    pub fn new(initial_value: u64) -> Self {
-        Self {
-            sequence: AtomicU64::new(initial_value),
-            _padding: [0; 128 - 8],
-        }
-    }
-}
-
-/// Cache-line padded consumer sequence to prevent false sharing
-/// Uses 128-byte alignment to prevent false sharing on modern Intel CPUs
-/// that prefetch two cache lines at a time
-#[repr(align(128))]
-pub struct PaddedConsumerSequence {
-    /// Consumer sequence (128-byte aligned)
-    pub sequence: AtomicU64,
-    /// Padding to ensure 128-byte alignment
-    _padding: [u8; 128 - 8],
-}
-
-impl PaddedConsumerSequence {
-    pub fn new(initial_value: u64) -> Self {
-        Self {
-            sequence: AtomicU64::new(initial_value),
-            _padding: [0; 128 - 8],
-        }
-    }
-}
+use crate::disruptor::common::{ PaddedProducerSequence, PaddedConsumerSequence };
 
 /// High-performance ring buffer implementation with cache-line padding
 ///
@@ -336,7 +298,12 @@ impl RingBuffer {
         }
     }
 
-    /// Ultra-optimized batch claim with direct memory access
+    /// ULTRA-FAST DIRECT ACCESS: Claim slots directly for maximum performance
+    ///
+    /// This is a more aggressive version of `try_claim_slots` that uses relaxed
+    /// atomic ordering for maximum performance. It should only be used in scenarios
+    /// where the caller can guarantee that the claimed slots will be filled and
+    /// published before any other thread can access them.
     pub fn try_claim_slots_ultra(&mut self, count: usize) -> Option<(u64, &mut [MessageSlot])> {
         let current = self.producer_sequence.sequence.load(Ordering::Relaxed);
         let next = current + (count as u64);
@@ -412,6 +379,11 @@ impl RingBuffer {
     }
 
     /// Ultra-fast batch publish with minimal synchronization
+    ///
+    /// This is a more aggressive version of `publish_batch` that uses relaxed
+    /// atomic ordering for maximum performance. It should only be used in scenarios
+    /// where the caller can guarantee that the published slots will be consumed
+    /// by a single consumer thread.
     pub fn publish_batch_ultra(&self, start_seq: u64, count: usize) {
         // Use release ordering for visibility without full barrier
         self.producer_sequence.sequence.store(start_seq + (count as u64), Ordering::Release);
@@ -591,15 +563,15 @@ impl MappedRingBuffer {
     /// # Safety
     ///
     /// This function performs several unsafe operations:
-    /// - Memory mapping via `libc::mmap` - safe because we check for MAP_FAILED
-    /// - Raw pointer manipulation - safe because we maintain proper bounds
-    /// - Memory locking via `libc::mlock` - safe because we check return value
-    /// - Zero-initialization via `std::ptr::write_bytes` - safe because ptr is valid
+    /// - Memory mapping via `libc::mmap`: This is safe because we check for `MAP_FAILED` and handle the error.
+    /// - Raw pointer manipulation: This is safe because we maintain proper bounds and alignment, and the memory is valid for the lifetime of the `MappedRingBuffer`.
+    /// - Memory locking via `libc::mlock`: This is safe because we check the return value and handle errors.
+    /// - Zero-initialization via `std::ptr::write_bytes`: This is safe because the pointer is valid and points to a memory region of the correct size.
     ///
     /// The returned buffer is safe to use because:
-    /// - All access is bounds-checked using the mask
-    /// - Producer/consumer synchronization prevents race conditions
-    /// - Memory is properly aligned and sized
+    /// - All access is bounds-checked using the mask.
+    /// - Producer/consumer synchronization prevents race conditions.
+    /// - Memory is properly aligned and sized.
     pub fn new_mapped(config: RingBufferConfig) -> Result<Self> {
         let size = config.size;
         let buffer_size = size * std::mem::size_of::<MessageSlot>();

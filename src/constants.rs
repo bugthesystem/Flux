@@ -12,8 +12,8 @@ pub const MAX_RING_BUFFER_SIZE: usize = 4 * 1024 * 1024; // 4M slots
 /// Cache line size for alignment optimizations (64 bytes on most modern CPUs)
 pub const CACHE_LINE_SIZE: usize = 64;
 
-/// Maximum transmission unit for UDP packets (Ethernet MTU - headers)
-pub const MAX_UDP_PAYLOAD: usize = 1500;
+/// Maximum transmission unit for UDP packets (Ethernet MTU - IP header - UDP header)
+pub const MAX_UDP_PAYLOAD: usize = 1500 - 20 - 8;
 
 /// Maximum batch size for optimal performance
 pub const MAX_BATCH_SIZE: usize = 64;
@@ -69,8 +69,7 @@ pub const DEFAULT_CONNECTION_TIMEOUT_NS: u64 = 30_000_000_000;
 /// Maximum number of retransmission attempts
 pub const MAX_RETRANSMISSION_ATTEMPTS: usize = 3;
 
-/// Default NAK timeout in nanoseconds (100ms)
-pub const DEFAULT_NAK_TIMEOUT_NS: u64 = 100_000_000;
+
 
 /// Forward Error Correction data shards (default: 8)
 pub const DEFAULT_FEC_DATA_SHARDS: usize = 8;
@@ -169,7 +168,7 @@ pub fn validate_constants() -> Result<(), &'static str> {
     }
 
     // Validate batch sizes are reasonable
-    if OPTIMAL_SPSC_BATCH_SIZE == 0 || OPTIMAL_MPMC_BATCH_SIZE == 0 {
+    if OPTIMAL_SPSC_BATCH_SIZE == 0 || OPTIMAL_MPMC_BATCH_SIZE == 0 || EXTREME_BATCH_SIZE == 0 {
         return Err("Batch sizes must be greater than 0");
     }
 
@@ -177,10 +176,93 @@ pub fn validate_constants() -> Result<(), &'static str> {
     if MAX_MESSAGE_DATA_SIZE == 0 || MESSAGE_SLOT_SIZE == 0 {
         return Err("Message sizes must be greater than 0");
     }
+    if MESSAGE_SLOT_SIZE <= MESSAGE_SLOT_HEADER_SIZE {
+        return Err("MESSAGE_SLOT_SIZE must be greater than MESSAGE_SLOT_HEADER_SIZE");
+    }
 
     // Validate cache line size
     if CACHE_LINE_SIZE == 0 || !CACHE_LINE_SIZE.is_power_of_two() {
         return Err("CACHE_LINE_SIZE must be a power of 2");
+    }
+
+    // Validate memory alignment
+    if MEMORY_ALIGNMENT == 0 || !MEMORY_ALIGNMENT.is_power_of_two() {
+        return Err("MEMORY_ALIGNMENT must be a power of 2");
+    }
+
+    // Validate page size
+    if PAGE_SIZE == 0 || !PAGE_SIZE.is_power_of_two() {
+        return Err("PAGE_SIZE must be a power of 2");
+    }
+
+    // Validate huge page size
+    if HUGE_PAGE_SIZE == 0 || !HUGE_PAGE_SIZE.is_power_of_two() {
+        return Err("HUGE_PAGE_SIZE must be a power of 2");
+    }
+
+    // Validate socket buffer size
+    if DEFAULT_SOCKET_BUFFER_SIZE == 0 {
+        return Err("DEFAULT_SOCKET_BUFFER_SIZE must be greater than 0");
+    }
+
+    // Validate max connections
+    if MAX_CONNECTIONS == 0 {
+        return Err("MAX_CONNECTIONS must be greater than 0");
+    }
+
+    // Validate heartbeat interval
+    if DEFAULT_HEARTBEAT_INTERVAL_NS == 0 {
+        return Err("DEFAULT_HEARTBEAT_INTERVAL_NS must be greater than 0");
+    }
+
+    // Validate connection timeout
+    if DEFAULT_CONNECTION_TIMEOUT_NS == 0 {
+        return Err("DEFAULT_CONNECTION_TIMEOUT_NS must be greater than 0");
+    }
+
+    // Validate NAK timeout
+    if NAK_TIMEOUT_MS == 0 {
+        return Err("NAK_TIMEOUT_MS must be greater than 0");
+    }
+
+    // Validate FEC shards
+    if DEFAULT_FEC_DATA_SHARDS == 0 || DEFAULT_FEC_PARITY_SHARDS == 0 {
+        return Err("FEC shards must be greater than 0");
+    }
+
+    // Validate benchmark duration
+    if DEFAULT_BENCHMARK_DURATION_SECS == 0 {
+        return Err("DEFAULT_BENCHMARK_DURATION_SECS must be greater than 0");
+    }
+
+    // Validate warmup messages
+    if DEFAULT_WARMUP_MESSAGES == 0 {
+        return Err("DEFAULT_WARMUP_MESSAGES must be greater than 0");
+    }
+
+    // Validate test messages
+    if DEFAULT_TEST_MESSAGES == 0 {
+        return Err("DEFAULT_TEST_MESSAGES must be greater than 0");
+    }
+
+    // Validate max benchmark CPU cores
+    if MAX_BENCHMARK_CPU_CORES == 0 {
+        return Err("MAX_BENCHMARK_CPU_CORES must be greater than 0");
+    }
+
+    // Validate SIMD min data size
+    if SIMD_MIN_DATA_SIZE == 0 || !SIMD_MIN_DATA_SIZE.is_power_of_two() {
+        return Err("SIMD_MIN_DATA_SIZE must be a power of 2");
+    }
+
+    // Validate optimized word size
+    if OPTIMIZED_WORD_SIZE == 0 || !OPTIMIZED_WORD_SIZE.is_power_of_two() {
+        return Err("OPTIMIZED_WORD_SIZE must be a power of 2");
+    }
+
+    // Validate SIMD words per operation
+    if SIMD_WORDS_PER_OPERATION == 0 || !SIMD_WORDS_PER_OPERATION.is_power_of_two() {
+        return Err("SIMD_WORDS_PER_OPERATION must be a power of 2");
     }
 
     Ok(())

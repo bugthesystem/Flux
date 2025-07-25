@@ -55,6 +55,7 @@
 pub mod ring_buffer;
 pub mod message_slot;
 pub mod wait_strategy;
+pub mod common;
 
 // Re-export main types
 pub use ring_buffer::RingBuffer;

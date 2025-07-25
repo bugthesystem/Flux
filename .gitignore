@@ -33,3 +33,5 @@ criterion/
 # Temporary files
 *.tmp
 *.temp
+
+plans/

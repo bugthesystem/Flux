@@ -3,7 +3,7 @@ use flux::disruptor::RingBufferEntry;
 use std::thread;
 use std::sync::{ Arc, Mutex };
 
-const NUM_MESSAGES: u64 = 10_000_000;
+const NUM_MESSAGES: u64 = 1_000_000;
 const RING_BUFFER_SIZE: usize = 65536;
 
 fn main() {

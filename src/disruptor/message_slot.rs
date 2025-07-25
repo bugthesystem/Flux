@@ -8,8 +8,8 @@
 //!
 //! - **Cache-Line Aligned**: 64-byte alignment for optimal CPU access patterns
 //! - **Optimized Operations**: SIMD-accelerated data copying and processing
-//! - **SIMD Optimizations**: Word-sized operations for faster data copying
-//! - **Fast Checksums**: Optimized xxHash-style checksum calculation
+//! - **SIMD Optimizations**: Hardware-accelerated operations for data copying and checksum calculation (currently implemented for ARM64, with fallback for other architectures).
+//! - **Fast Checksums**: A custom, fast checksum algorithm inspired by xxHash for data integrity verification.
 //! - **Type Safety**: Strong typing for message types and flags
 //!
 //! ## Performance Characteristics
@@ -22,19 +22,25 @@
 //! ## Example Usage
 //!
 //! ```rust
-//! use flux::disruptor::MessageSlot;
+//! use flux::disruptor::{MessageSlot, MessageFlags};
 //!
 //! // Create a new message slot with data
 //! let mut slot = MessageSlot::default();
-//! slot.set_data(b"Hello, Flux!"); // SIMD-optimized data copying (not zero-copy)
+//! slot.set_data(b"Hello, Flux!");
 //!
-//! // Access the data
+//! // Set message flags
+//! let mut flags = MessageFlags::default();
+//! flags.requires_ack = true;
+//! slot.set_flags(flags);
+//!
+//! // Access the data and flags
 //! println!("Data: {:?}", slot.data());
+//! println!("Requires ACK: {}", slot.flags().requires_ack);
 //! println!("Checksum valid: {}", slot.verify_checksum());
 //! ```
 
 use std::time::{ SystemTime, UNIX_EPOCH };
-// use bytemuck::{ Pod, Zeroable }; // Temporarily disabled
+// use bytemuck::{ Pod, Zeroable }; // Temporarily disabled, but planned for future zero-copy optimizations.
 use serde::{ Deserialize, Serialize };
 
 use crate::disruptor::{ RingBufferEntry, Sequence };

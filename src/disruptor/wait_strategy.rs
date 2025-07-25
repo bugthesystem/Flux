@@ -14,14 +14,26 @@ use crate::error::{ Result, FluxError };
 /// Trait for wait strategies that determine how consumers wait for data
 pub trait WaitStrategy: Send + Sync {
     /// Wait for the given sequence to be available
-    /// Returns the actual sequence that became available
+    ///
+    /// # Arguments
+    ///
+    /// * `sequence` - The sequence number to wait for
+    /// * `cursor` - An atomic boolean that signals a shutdown of the ring buffer
+    ///
+    /// # Returns
+    ///
+    /// Returns the actual sequence that became available, or an error if the
+    /// ring buffer was shut down.
     fn wait_for(&self, sequence: Sequence, cursor: &AtomicBool) -> Result<Sequence>;
 
     /// Signal that new data is available
     fn signal_all_when_blocking(&self);
 }
 
-/// Busy spin wait strategy - lowest latency, highest CPU usage
+/// Busy spin wait strategy - lowest latency, highest CPU usage.
+/// This strategy continuously checks for new data in a tight loop, making it
+/// ideal for scenarios where latency is critical and CPU resources are abundant.
+/// However, it will consume 100% of a CPU core while waiting.
 pub struct BusySpinWaitStrategy;
 
 impl BusySpinWaitStrategy {
@@ -62,7 +74,10 @@ impl WaitStrategy for BusySpinWaitStrategy {
     }
 }
 
-/// Blocking wait strategy - balanced latency and CPU usage
+/// Blocking wait strategy - balanced latency and CPU usage.
+/// This strategy uses a condition variable to block the consumer thread when
+/// no data is available, significantly reducing CPU usage compared to busy spinning.
+/// It's a good general-purpose strategy for most applications.
 pub struct BlockingWaitStrategy {
     mutex: parking_lot::Mutex<()>,
     condition: parking_lot::Condvar,
@@ -117,7 +132,10 @@ impl WaitStrategy for BlockingWaitStrategy {
     }
 }
 
-/// Sleeping wait strategy - lowest CPU usage, higher latency
+/// Sleeping wait strategy - lowest CPU usage, higher latency.
+/// This strategy puts the consumer thread to sleep for a specified duration
+/// when no data is available. It's ideal for applications where CPU usage is a
+/// primary concern and latency is not critical.
 pub struct SleepingWaitStrategy {
     sleep_duration: Duration,
 }
@@ -169,7 +187,10 @@ impl WaitStrategy for SleepingWaitStrategy {
     }
 }
 
-/// Yielding wait strategy - moderate CPU usage and latency
+/// Yielding wait strategy - moderate CPU usage and latency.
+/// This strategy yields the CPU to other threads when no data is available.
+/// It's a good compromise between busy spinning and sleeping, providing
+/// reasonable latency without consuming excessive CPU resources.
 pub struct YieldingWaitStrategy {
     spin_tries: usize,
     yield_tries: usize,
@@ -233,7 +254,10 @@ impl WaitStrategy for YieldingWaitStrategy {
     }
 }
 
-/// Timeout wait strategy - waits for a maximum duration
+/// Timeout wait strategy - waits for a maximum duration.
+/// This strategy wraps another wait strategy and adds a timeout. If the
+/// wrapped strategy doesn't return within the specified duration, the
+/// `wait_for` method will return a `FluxError::Timeout`.
 pub struct TimeoutWaitStrategy {
     timeout: Duration,
     base_strategy: Box<dyn WaitStrategy>,

@@ -32,10 +32,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\nTesting LMAX Disruptor Ring Buffer...");
-    test_disruptor_performance()?;
+    let final_throughput = test_disruptor_performance()?;
 
     println!("\nPerformance Summary:");
-    println!("  Ring buffer operations: ~52K msgs/sec (measured)");
+    println!(
+        "  Ring buffer operations: {:.2} M msgs/sec",
+        final_throughput / constants::MESSAGES_PER_MILLION
+    );
     println!("  Optimized memory handling: Implemented");
     println!("  CPU affinity: Configured");
     println!("  Cache-line alignment: {}-byte aligned", constants::CACHE_LINE_SIZE);
@@ -50,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn test_disruptor_performance() -> Result<(), Box<dyn std::error::Error>> {
+fn test_disruptor_performance() -> Result<f64, Box<dyn std::error::Error>> {
     println!("  Creating ring buffer with 1M slots...");
 
     let config = RingBufferConfig {
@@ -130,5 +133,5 @@ fn test_disruptor_performance() -> Result<(), Box<dyn std::error::Error>> {
         println!("  WARNING: Below target throughput of 6M messages/second");
     }
 
-    Ok(())
+    Ok(final_throughput)
 }

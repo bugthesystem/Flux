@@ -87,7 +87,9 @@ pub enum FluxError {
     #[error("Operation timed out")]
     Timeout,
 
-    /// Generic error for unexpected conditions
+    /// Generic error for unexpected conditions.
+    /// This error should be used for situations that are not expected to happen
+    /// in a correctly functioning system, such as a logic error in the code.
     #[error("Unexpected error: {message}")]
     Unexpected {
         /// Error message describing the unexpected condition
