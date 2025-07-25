@@ -59,8 +59,6 @@ use crate::disruptor::{ RingBufferConfig, MessageSlot, RingBufferEntry };
 use crate::error::{ Result, FluxError };
 use crate::constants::CACHE_PREFETCH_LINES;
 
-// SIMD imports moved to specific functions where they're used
-
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::{ _mm256_loadu_si256, _mm256_storeu_si256, __m256i };
 
@@ -243,7 +241,7 @@ impl RingBuffer {
         }
     }
 
-    /// ULTRA-FAST DIRECT ACCESS: Claim slots directly for maximum performance
+    /// Direct access: Claim slots directly for maximum performance
     pub fn try_claim_slots(&mut self, count: usize) -> Option<(u64, &mut [MessageSlot])> {
         if count == 0 {
             return None;
@@ -298,7 +296,7 @@ impl RingBuffer {
         }
     }
 
-    /// ULTRA-FAST DIRECT ACCESS: Claim slots directly for maximum performance
+    /// Direct access: Claim slots directly for maximum performance
     ///
     /// This is a more aggressive version of `try_claim_slots` that uses relaxed
     /// atomic ordering for maximum performance. It should only be used in scenarios
@@ -378,7 +376,7 @@ impl RingBuffer {
         }
     }
 
-    /// Ultra-fast batch publish with minimal synchronization
+    /// Fast batch publish with minimal synchronization
     ///
     /// This is a more aggressive version of `publish_batch` that uses relaxed
     /// atomic ordering for maximum performance. It should only be used in scenarios
