@@ -59,7 +59,7 @@ pub mod common;
 
 // Re-export main types
 pub use ring_buffer::RingBuffer;
-pub use message_slot::MessageSlot;
+pub use message_slot::{MessageSlot, MessageFlags};
 pub use wait_strategy::{ WaitStrategy, BusySpinWaitStrategy, BlockingWaitStrategy };
 
 // Linux-specific exports

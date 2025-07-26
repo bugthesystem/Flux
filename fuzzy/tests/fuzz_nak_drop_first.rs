@@ -5,15 +5,11 @@ use std::time::Duration;
 use flux::transport::reliable_udp::ReliableUdpRingBufferTransport;
 use flux::transport::reliable_udp::DEBUG_NAK;
 
+use fuzzy::test_utils::{ free_addr };
+
 #[test]
 fn test_nak_retransmission_drop_first() {
     DEBUG_NAK.store(true, Ordering::Relaxed);
-    fn free_addr() -> std::net::SocketAddr {
-        let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let addr = sock.local_addr().unwrap();
-        drop(sock);
-        addr
-    }
 
     let sender_addr = free_addr();
     let proxy_addr = free_addr();

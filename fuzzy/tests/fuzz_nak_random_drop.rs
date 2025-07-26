@@ -6,15 +6,10 @@ use rand::{ thread_rng, Rng };
 use flux::transport::reliable_udp::ReliableUdpRingBufferTransport;
 use flux::transport::reliable_udp::DEBUG_NAK;
 
+use fuzzy::test_utils::{ free_addr };
+
 const NUM_MESSAGES: u64 = 10;
 const DROP_PROB: f64 = 0.05; // Lowered to 5% random drop
-
-fn free_addr() -> std::net::SocketAddr {
-    let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
-    let addr = sock.local_addr().unwrap();
-    drop(sock);
-    addr
-}
 
 #[test]
 fn fuzz_nak_random_drop() {
