@@ -725,7 +725,7 @@ fn benchmark_reliable_udp_ringbuffer(
     };
 
     Ok(TransportBenchmarkResult {
-        transport_name: "Reliable UDP (NAK, RingBuffer + BTreeMap)".to_string(),
+        transport_name: "Reliable UDP (NAK, RingBuffer + Bitmap)".to_string(),
         messages_sent,
         messages_received,
         duration,

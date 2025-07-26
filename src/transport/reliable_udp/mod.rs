@@ -10,7 +10,7 @@
 use std::net::{ SocketAddr, UdpSocket };
 use std::time::{ Instant, SystemTime, UNIX_EPOCH };
 use crate::disruptor::{ RingBufferConfig, RingBuffer, RingBufferEntry };
-use crate::transport::reliable_udp::reliable_window_ring_buffer::HybridWindow;
+use crate::transport::reliable_udp::reliable_window_ring_buffer::BitmapWindow;
 use crc32fast::Hasher;
 use std::sync::atomic::{ AtomicBool, Ordering };
 
@@ -131,7 +131,7 @@ pub struct BatchNak {
 pub struct ReliableUdpRingBufferTransport {
     socket: UdpSocket,
     send_window: RingBuffer,
-    recv_window: HybridWindow,
+    recv_window: BitmapWindow,
     window_size: usize,
     next_send_seq: u64,
     _next_recv_seq: u64,
@@ -189,7 +189,7 @@ impl ReliableUdpRingBufferTransport {
         Ok(Self {
             socket,
             send_window: RingBuffer::new(RingBufferConfig::default()).unwrap(),
-            recv_window: HybridWindow::new(window_size, 0),
+            recv_window: BitmapWindow::new(window_size, 0),
             window_size,
             next_send_seq: 0,
             _next_recv_seq: 0,
@@ -363,7 +363,7 @@ impl ReliableUdpRingBufferTransport {
                         }
                     }
                 }
-                self.recv_window.ring.send_batch_naks_for_gaps(|start, end| {
+                self.recv_window.send_batch_naks_for_gaps(|start, end| {
                     self.send_batch_nak(start, end);
                 });
             }
@@ -441,7 +441,11 @@ impl ReliableUdpRingBufferTransport {
                 let sequence = h.sequence;
                 let payload_len = h.payload_len;
                 if msg_type == (MessageType::Nak as u8) {
-                    debug_nak!("[SENDER] Received NAK: seq={} payload_len={}", sequence, payload_len);
+                    debug_nak!(
+                        "[SENDER] Received NAK: seq={} payload_len={}",
+                        sequence,
+                        payload_len
+                    );
                     // Batch NAK: payload is 16 bytes (start_seq, end_seq)
                     if payload_len == 16 && len >= ReliableUdpHeader::SIZE + 16 {
                         let start_seq = u64::from_le_bytes(
@@ -588,7 +592,7 @@ impl ReliableUdpRingBufferTransport {
             delivered_count += 1;
         });
         // After delivery, send batch NAKs for missing ranges
-        self.recv_window.ring.send_batch_naks_for_gaps(|start, end| {
+        self.recv_window.send_batch_naks_for_gaps(|start, end| {
             self.send_batch_nak(start, end);
         });
     }

@@ -132,7 +132,7 @@ fn bench_ringbuffer_with_config(cfg: &BenchmarkConfig) -> BenchmarkResult {
 fn bench_mapped_ringbuffer_with_config(cfg: &BenchmarkConfig) -> BenchmarkResult {
     println!("\n🔹 Testing MappedRingBuffer (memory-mapped) [{}]...", cfg.name);
     let config = RingBufferConfig::new(cfg.buffer_size).unwrap();
-    let mut buffer = MappedRingBuffer::new_mapped(config).unwrap();
+    let buffer = MappedRingBuffer::new_mapped(config).unwrap();
     let test_message = vec![0xAA; cfg.message_size];
     let start_time = Instant::now();
     let mut messages_sent = 0;
