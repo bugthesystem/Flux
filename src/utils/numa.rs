@@ -3,7 +3,6 @@
 // Only the API surface and platform wiring remain here.
 // All platform-specific logic is in platform/linux/numa.rs or platform/macos/numa.rs.
 
-// --- Platform-specific NUMA utilities (hybrid structure) ---
 #[cfg(target_os = "linux")]
 mod platform_impl {
     pub use crate::platform::linux::numa::*;
@@ -12,10 +11,8 @@ mod platform_impl {
 mod platform_impl {
     pub use crate::platform::macos::numa::*;
 }
-// Add more platforms as you implement them
 
 pub use platform_impl::*;
-// --- End platform-specific wiring ---
 
 #[cfg(test)]
 mod tests {
