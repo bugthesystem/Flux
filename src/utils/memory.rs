@@ -140,7 +140,6 @@ pub fn get_memory_stats() -> MemoryStats {
     MemoryStats::new()
 }
 
-// --- Platform-specific memory utilities (hybrid structure) ---
 #[cfg(target_os = "linux")]
 mod platform_impl {
     pub use crate::platform::linux::memory::*;
@@ -152,7 +151,6 @@ mod platform_impl {
 // Add more platforms as you implement them
 
 pub use platform_impl::*;
-// --- End platform-specific wiring ---
 
 #[cfg(test)]
 mod tests {
