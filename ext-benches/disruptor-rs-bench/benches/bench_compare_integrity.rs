@@ -8,7 +8,7 @@
 //!
 //! Tests three variants:
 //! - Flux with MessageSlot (128 bytes)
-//! - Flux with SmallSlot (8 bytes) - FAIR comparison
+//! - Flux with Slot8 (8 bytes) - FAIR comparison
 //! - disruptor-rs (8 bytes)
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -16,10 +16,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-// SmallSlot: Minimal 8-byte slot for fair comparison with disruptor-rs
+// Slot8: Minimal 8-byte slot for fair comparison with disruptor-rs
 #[repr(C, align(8))]
 #[derive(Clone, Copy, Default)]
-struct SmallSlot {
+struct Slot8 {
     pub value: u64,
 }
 
@@ -87,8 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (flux_total_consumed as f64 / flux_total_sent as f64) * 100.0
     );
 
-    // Test 2: Flux SmallSlot (FAIR comparison)
-    println!("\n═══ Test 2: Flux SmallSlot (8 bytes) - FAIR COMPARISON ═══\n");
+    // Test 2: Flux Slot8 (FAIR comparison)
+    println!("\n═══ Test 2: Flux Slot8 (8 bytes) - FAIR COMPARISON ═══\n");
     let mut flux_small_results = Vec::new();
     let mut flux_small_total_sent = 0u64;
     let mut flux_small_total_consumed = 0u64;
@@ -191,21 +191,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("║  COMPARISON - APPLES TO APPLES                        ║");
     println!("╚════════════════════════════════════════════════════════╝");
     println!("  Flux MessageSlot (128B): {:.2}M msgs/sec", flux_avg);
-    println!("  Flux SmallSlot (8B):     {:.2}M msgs/sec", flux_small_avg);
+    println!("  Flux Slot8 (8B):     {:.2}M msgs/sec", flux_small_avg);
     println!("  disruptor-rs (8B):       {:.2}M msgs/sec", disruptor_avg);
     println!();
 
-    // Fair comparison: SmallSlot vs disruptor-rs
+    // Fair comparison: Slot8 vs disruptor-rs
     if flux_small_avg > disruptor_avg {
         let gain = ((flux_small_avg - disruptor_avg) / disruptor_avg) * 100.0;
         println!(
-            "  🚀 Flux SmallSlot is {:.1}% FASTER than disruptor-rs!",
+            "  🚀 Flux Slot8 is {:.1}% FASTER than disruptor-rs!",
             gain
         );
     } else {
         let diff = ((disruptor_avg - flux_small_avg) / flux_small_avg) * 100.0;
         println!(
-            "  ⚠️  Flux SmallSlot is {:.1}% slower than disruptor-rs",
+            "  ⚠️  Flux Slot8 is {:.1}% slower than disruptor-rs",
             diff
         );
     }
@@ -213,7 +213,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Analysis
     println!("\n  📊 Analysis:");
     println!("  - MessageSlot has features (timestamps, checksums, metadata)");
-    println!("  - SmallSlot matches disruptor-rs design (8 bytes, minimal)");
+    println!("  - Slot8 matches disruptor-rs design (8 bytes, minimal)");
     let overhead = ((flux_avg / flux_small_avg - 1.0) * 100.0);
     println!(
         "  - Feature overhead: {:.1}% slower for 128-byte slots",
@@ -225,17 +225,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn benchmark_flux() -> Result<(f64, bool, u64, u64), Box<dyn std::error::Error>> {
-    use flux::disruptor::{RingBuffer, RingBufferConfig, WaitStrategyType};
+    use kaos::disruptor::{RingBuffer, RingBufferConfig};
 
     let config = RingBufferConfig {
         size: RING_SIZE,
         num_consumers: 1,
-        wait_strategy: WaitStrategyType::BusySpin,
-        optimal_batch_size: BATCH_SIZE,
-        enable_cache_prefetch: true,
-        enable_simd: false,
-        strict_message_ordering: true,
-        block_on_full: false,
     };
 
     let ring_buffer = Arc::new(RingBuffer::new(config)?);
@@ -344,17 +338,11 @@ fn benchmark_flux_small() -> Result<(f64, bool, u64, u64), Box<dyn std::error::E
     // We'll create a minimal benchmark using raw u64 values in MessageSlot.sequence
     // This gives us the same 8-byte payload as disruptor-rs for fair comparison
 
-    use flux::disruptor::{RingBuffer, RingBufferConfig, WaitStrategyType};
+    use kaos::disruptor::{RingBuffer, RingBufferConfig};
 
     let config = RingBufferConfig {
         size: RING_SIZE,
         num_consumers: 1,
-        wait_strategy: WaitStrategyType::BusySpin,
-        optimal_batch_size: BATCH_SIZE,
-        enable_cache_prefetch: true,
-        enable_simd: false,
-        strict_message_ordering: true,
-        block_on_full: false,
     };
 
     let ring_buffer = Arc::new(RingBuffer::new(config)?);

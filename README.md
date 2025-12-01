@@ -1,4 +1,4 @@
-# Flux
+# Kaos
 
 Lock-free ring buffers for inter-thread, inter-process, and network communication.
 
@@ -12,9 +12,9 @@ Lock-free ring buffers for inter-thread, inter-process, and network communicatio
 
 | Crate | Purpose | Throughput* |
 |-------|---------|-------------|
-| [flux](./flux) | Inter-thread ring buffer | 64B slots - ~450M/s |
-| [flux-ipc](./flux-ipc) | Shared memory IPC | 310 M/s |
-| [flux-rudp](./flux-rudp) | Reliable UDP | 3.0 M/s |
+| [kaos](./kaos) | Inter-thread ring buffer | 64B slots - ~450M/s |
+| [kaos-ipc](./kaos-ipc) | Shared memory IPC | 310 M/s |
+| [kaos-rudp](./kaos-rudp) | Reliable UDP | 3.0 M/s |
 
 *Criterion benchmarks, Apple M1, macOS 14. Run `cargo bench` to verify on your hardware.*
 
@@ -27,7 +27,7 @@ Based on the [LMAX Disruptor](https://lmax-exchange.github.io/disruptor/) patter
 - **Cache-line alignment** (128 bytes on Apple Silicon, 64 on x86) to prevent false sharing
 - **Batch operations** to amortize synchronization overhead
 
-### flux: Core Ring Buffer
+### kaos: Core Ring Buffer
 
 ```
 Producer                              Consumer
@@ -52,7 +52,7 @@ Producer                              Consumer
 
 ## Architecture
 
-### flux-ipc: Shared Memory Transport
+### kaos-ipc: Shared Memory Transport
 
 Cross-process communication using memory-mapped ring buffers.
 
@@ -80,7 +80,7 @@ Process A (Publisher)              Process B (Subscriber)
 4. Lock-free SPSC protocol: publisher writes slots, updates sequence; subscriber reads when sequence advances
 5. No syscalls in hot path—just atomic loads/stores on shared memory
 
-### flux-rudp: Reliable UDP Transport
+### kaos-rudp: Reliable UDP Transport
 
 NAK-based reliable delivery over UDP, inspired by [Aeron](https://github.com/real-logic/aeron).
 
@@ -123,23 +123,23 @@ All unsafe blocks are documented with safety invariants.
 
 ```bash
 # Core ring buffer
-cargo bench -p flux --bench bench_criterion
+cargo bench -p kaos --bench bench_criterion
 
 # IPC
-cargo bench -p flux-ipc --bench bench_ipc
+cargo bench -p kaos-ipc --bench bench_ipc
 
 # RUDP
-cargo bench -p flux-rudp --bench bench_rudp
+cargo bench -p kaos-rudp --bench bench_rudp
 ```
 
 | Component | Metric | Result |
 |-----------|--------|--------|
-| flux (8B slot) | Batch throughput | 2.0 B/s |
-| flux (64B slot) | Batch throughput | 450 M/s |
-| flux (128B MessageSlot) | Batch throughput | 115 M/s |
-| flux-ipc | Single message | 137 M/s |
-| flux-ipc | Sustained batch | 310 M/s |
-| flux-rudp | Localhost (100% delivery) | 3.0 M/s |
+| kaos (8B slot) | Batch throughput | 2.0 B/s |
+| kaos (64B slot) | Batch throughput | 450 M/s |
+| kaos (128B MessageSlot) | Batch throughput | 115 M/s |
+| kaos-ipc | Single message | 137 M/s |
+| kaos-ipc | Sustained batch | 310 M/s |
+| kaos-rudp | Localhost (100% delivery) | 3.0 M/s |
 
 ### Real-World Scenario
 
@@ -147,14 +147,14 @@ Mobile user interaction tracking (click, scroll, pageview, purchase, login):
 
 | Crate | Events | Throughput | Verified |
 |-------|--------|------------|----------|
-| flux | 5 Billion | 408 M/s | ✅ |
-| flux-ipc | 1 Billion | 224 M/s | ✅ |
-| flux-rudp | 500K | 3.0 M/s | ✅ 100% delivery |
+| kaos | 5 Billion | 408 M/s | ✅ |
+| kaos-ipc | 1 Billion | 224 M/s | ✅ |
+| kaos-rudp | 500K | 3.0 M/s | ✅ 100% delivery |
 
 ```bash
-cargo bench -p flux --bench bench_trace_events
-cargo bench -p flux-ipc --bench bench_trace_events
-cargo bench -p flux-rudp --bench bench_trace_events
+cargo bench -p kaos --bench bench_trace_events
+cargo bench -p kaos-ipc --bench bench_trace_events
+cargo bench -p kaos-rudp --bench bench_trace_events
 ```
 
 ### Comparison vs disruptor-rs
@@ -163,7 +163,7 @@ Same trace events benchmark (10M events):
 
 | Library | Throughput | Verified |
 |---------|------------|----------|
-| **flux** | **400 M/s** | ✅ |
+| **kaos** | **400 M/s** | ✅ |
 | disruptor-rs | 391 M/s | ✅ |
 
 ```bash
@@ -174,7 +174,7 @@ cd ext-benches/disruptor-rs-bench && cargo bench --bench bench_trace_events
 
 ```bash
 cargo test --workspace
-cargo test -p flux-test-support -- --test-threads=1
+cargo test -p kaos-test-support -- --test-threads=1
 ```
 
 Test coverage: unit tests, memory ordering tests, stress tests, packet loss simulation.
@@ -191,11 +191,11 @@ Test coverage: unit tests, memory ordering tests, stress tests, packet loss simu
 ## Quick Start
 
 ```rust
-use flux::disruptor::{RingBuffer, SmallSlot};
+use kaos::disruptor::{RingBuffer, Slot8};
 use std::sync::Arc;
 
 // Create ring buffer
-let ring = Arc::new(RingBuffer::<SmallSlot>::new(1024)?);
+let ring = Arc::new(RingBuffer::<Slot8>::new(1024)?);
 
 // Producer: claim slots, write, publish
 let mut cursor = 0u64;

@@ -22,9 +22,9 @@ const BATCH_SIZE: usize = 8192;
 
 /// Flux implementation - using batch API
 fn run_flux_trace_events() -> (u64, bool) {
-    use flux::disruptor::{RingBuffer, SmallSlot};
+    use kaos::disruptor::{RingBuffer, Slot8};
 
-    let ring = Arc::new(RingBuffer::<SmallSlot>::new(RING_SIZE).unwrap());
+    let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
 
     let count_click = Arc::new(AtomicU64::new(0));

@@ -1,0 +1,104 @@
+[package]
+name = "kaos"
+version = "0.1.0-preview"
+edition = "2021"
+authors = ["Bug the System <bug.the.system.dev@gmail.com>"]
+description = "Lock-free ring buffer implementing LMAX Disruptor pattern"
+license = "MIT OR Apache-2.0"
+keywords = ["disruptor", "lock-free", "ring-buffer", "concurrency"]
+categories = ["concurrency", "data-structures"]
+repository = "https://github.com/bugthesystem/kaos"
+readme = "README.md"
+
+[dependencies]
+parking_lot = "0.12"
+libc = "0.2"
+crc32fast = "1.3"
+thiserror = "2.0.1"
+
+[features]
+default = []
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "bench_criterion"
+harness = false
+
+[[bench]]
+name = "bench_trace_events"
+harness = false
+
+[[bench]]
+name = "bench_all_slots"
+harness = false
+
+[[bench]]
+name = "bench_spmc_mpmc"
+harness = false
+
+[[bench]]
+name = "bench_verify"
+harness = false
+
+[[bench]]
+name = "bench_mapped_vs_heap"
+harness = false
+
+[[bench]]
+name = "bench_spsc"
+harness = false
+
+[[bench]]
+name = "bench_message_slot"
+harness = false
+
+[[bench]]
+name = "bench_macros"
+harness = false
+
+[[bench]]
+name = "bench_fast"
+harness = false
+
+[[bench]]
+name = "bench_minimal"
+harness = false
+
+[[bench]]
+name = "bench_fast_slots_macro"
+harness = false
+
+[[bench]]
+name = "bench_spsc_api"
+harness = false
+
+[[bench]]
+name = "bench_spsc_macro"
+harness = false
+
+[[bench]]
+name = "bench_verify_messageslot"
+harness = false
+
+[[example]]
+name = "spsc_basic"
+
+[[example]]
+name = "spsc_message"
+
+[[example]]
+name = "spsc_macro"
+
+[[example]]
+name = "mpsc_basic"
+
+[[example]]
+name = "spmc_basic"
+
+[[example]]
+name = "mpmc_basic"
+
+[[example]]
+name = "benchmark_slots"

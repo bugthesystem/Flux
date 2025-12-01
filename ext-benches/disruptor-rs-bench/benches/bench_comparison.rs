@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::thread;
 
 // flux
-use flux::disruptor::{RingBuffer, RingBufferEntry, SmallSlot};
+use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot8};
 
 // disruptor-rs
 use disruptor::{build_single_producer, build_multi_producer, BusySpin, Producer};
@@ -30,7 +30,7 @@ const TOTAL_EVENTS: u64 = 10_000_000;
 
 /// flux batch API (highest throughput)
 fn flux_batch(events: u64) -> u64 {
-    let ring = Arc::new(RingBuffer::<SmallSlot>::new(RING_SIZE).unwrap());
+    let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
 
     let ring_cons = ring.clone();
@@ -53,7 +53,7 @@ fn flux_batch(events: u64) -> u64 {
         }
     });
 
-    let ring_ptr = Arc::as_ptr(&ring) as *const RingBuffer<SmallSlot>;
+    let ring_ptr = Arc::as_ptr(&ring) as *const RingBuffer<Slot8>;
     let mut cursor = 0u64;
     while cursor < events {
         let ring_ref = unsafe { &*ring_ptr };
@@ -74,7 +74,7 @@ fn flux_batch(events: u64) -> u64 {
 
 /// flux per-event API (fair comparison with disruptor-rs)
 fn flux_per_event(events: u64) -> u64 {
-    let ring = Arc::new(RingBuffer::<SmallSlot>::new(RING_SIZE).unwrap());
+    let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
 
     let ring_cons = ring.clone();
@@ -95,7 +95,7 @@ fn flux_per_event(events: u64) -> u64 {
         }
     });
 
-    let ring_ptr = Arc::as_ptr(&ring) as *const RingBuffer<SmallSlot>;
+    let ring_ptr = Arc::as_ptr(&ring) as *const RingBuffer<Slot8>;
     let mut cursor = 0u64;
     while cursor < events {
         let ring_ref = unsafe { &*ring_ptr };

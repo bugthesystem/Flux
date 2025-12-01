@@ -1,0 +1,32 @@
+[package]
+name = "kaos-test-support"
+version = "0.1.0"
+edition = "2021"
+description = "Testing infrastructure for Kaos ecosystem - stress, fuzz, chaos testing"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+kaos = { path = "../kaos" }
+kaos-rudp = { path = "../kaos-rudp" }
+kaos-ipc = { path = "../kaos-ipc" }
+rand = "0.8"
+crossbeam-channel = "0.5"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[test]]
+name = "rudp_loss"
+path = "tests/rudp_loss_tests.rs"
+
+[[test]]
+name = "rudp_stress"
+path = "tests/rudp_stress_tests.rs"
+
+[[test]]
+name = "core_ordering"
+path = "tests/core_ordering_tests.rs"
+
+[[test]]
+name = "ipc_stress"
+path = "tests/ipc_stress_tests.rs"
