@@ -1,0 +1,32 @@
+[package]
+name = "flux-rudp"
+version = "0.1.0-preview"
+edition = "2021"
+authors = ["Bug the System <bug.the.system.dev@gmail.com>"]
+description = "High-performance reliable UDP transport built on flux ring buffers"
+license = "MIT OR Apache-2.0"
+keywords = ["udp", "reliable", "transport", "high-performance", "networking"]
+categories = ["network-programming"]
+readme = "README.md"
+repository = "https://github.com/temporalxyz/flux"
+
+[features]
+default = []
+debug = []
+
+[dependencies]
+flux = { path = "../flux" }
+bytemuck = { version = "1.14", features = ["derive"] }
+libc = "0.2"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Criterion Benchmarks
+[[bench]]
+name = "bench_rudp"
+harness = false
+
+[[bench]]
+name = "bench_trace_events"
+harness = false

@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "flux",
+    "flux-rudp",
+    "flux-ipc",
+    "flux-test-support"
+]
+exclude = [
+    "ext-libs"
+]
+resolver = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+overflow-checks = false
+strip = true
+
+[profile.bench]
+inherits = "release"
+debug = true

@@ -1,0 +1,20 @@
+[workspace]
+
+[package]
+name = "disruptor-rs-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+disruptor = "3.6"
+flux = { path = "../../flux" }
+criterion = { version = "0.8.0", features = ["html_reports"] }
+
+[[bench]]
+name = "bench_comparison"
+harness = false
+
+[[bench]]
+name = "bench_trace_events"
+harness = false

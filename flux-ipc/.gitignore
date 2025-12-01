@@ -1,0 +1,37 @@
+# Rust
+target/
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Profiling
+perf.data
+perf.data.old
+
+# Documentation
+docs/_build/
+
+# Benchmarks
+criterion/
+
+# Environment
+.env
+.env.local
+
+# Temporary files
+*.tmp
+*.temp
+
+plans/
