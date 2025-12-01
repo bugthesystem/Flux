@@ -12,7 +12,7 @@ Lock-free ring buffers for inter-thread, inter-process, and network communicatio
 
 | Crate | Purpose | Throughput* |
 |-------|---------|-------------|
-| [flux](./flux) | Inter-thread ring buffer | 2.0 B/s |
+| [flux](./flux) | Inter-thread ring buffer | 64B slots - ~450M/s |
 | [flux-ipc](./flux-ipc) | Shared memory IPC | 310 M/s |
 | [flux-rudp](./flux-rudp) | Reliable UDP | 3.0 M/s |
 
