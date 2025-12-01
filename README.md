@@ -179,6 +179,21 @@ cargo test -p kaos-test-support -- --test-threads=1
 
 Test coverage: unit tests, memory ordering tests, stress tests, packet loss simulation.
 
+### Concurrency Testing with Loom
+
+All ring buffer atomics are verified with [**Loom**](https://github.com/tokio-rs/loom) - the concurrency permutation testing tool from Tokio. Loom exhaustively explores all possible thread interleavings under the C11 memory model.
+
+```bash
+RUSTFLAGS="--cfg loom" cargo test -p kaos --test loom_ring_buffer --release
+```
+
+**Verified patterns:**
+- ✅ SPSC cursor synchronization & batch publish
+- ✅ MPSC compare_exchange_weak racing (2 & 3 producers)
+- ✅ SPMC consumer claim contention  
+- ✅ MPMC completion tracking & producer/consumer racing
+- ✅ Fence synchronization
+
 ## Platform Support
 
 | Platform | Status |

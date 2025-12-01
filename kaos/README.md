@@ -73,6 +73,22 @@ let ring = RingBuffer::<Slot8>::new(size)?;
 let ring = RingBuffer::<Slot8>::new_mapped(size)?;
 ```
 
+## Concurrency Testing with Loom
+
+All ring buffer types are tested with [**Loom**](https://github.com/tokio-rs/loom) - a concurrency permutation testing tool from the Tokio team. Loom exhaustively explores all possible thread interleavings under the C11 memory model.
+
+```bash
+# Run loom tests
+RUSTFLAGS="--cfg loom" cargo test --test loom_ring_buffer --release
+```
+
+**Tested patterns:**
+- ✅ SPSC cursor synchronization
+- ✅ MPSC compare_exchange_weak racing
+- ✅ SPMC consumer claim contention
+- ✅ MPMC completion tracking
+- ✅ Fence synchronization
+
 ## Platform Support
 
 | Platform | Status |

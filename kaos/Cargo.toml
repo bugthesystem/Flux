@@ -10,6 +10,9 @@ categories = ["concurrency", "data-structures"]
 repository = "https://github.com/bugthesystem/kaos"
 readme = "README.md"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
 [dependencies]
 parking_lot = "0.12"
 libc = "0.2"
@@ -21,6 +24,9 @@ default = []
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
 
 [[bench]]
 name = "bench_criterion"

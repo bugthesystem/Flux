@@ -111,9 +111,3 @@ impl ConsumerBuilder {
         Ok(Consumer::new(ring_buffer, self.consumer_id).with_batch_size(self.batch_size))
     }
 }
-
-impl Default for ConsumerBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}

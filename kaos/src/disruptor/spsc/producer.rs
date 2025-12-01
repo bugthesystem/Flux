@@ -79,9 +79,3 @@ impl ProducerBuilder {
         Ok(Producer::new(ring_buffer))
     }
 }
-
-impl Default for ProducerBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 use std::marker::PhantomData;
-use crate::disruptor::{RingBufferEntry, MpscRingBuffer};
+use crate::disruptor::{ RingBufferEntry, MpscRingBuffer };
 
 /// Event handler trait for MpscConsumer
 pub trait MpscEventHandler<T: RingBufferEntry> {
@@ -41,9 +41,9 @@ impl<T: RingBufferEntry> MpscConsumer<T> {
         let to_consume = available.min(self.batch_size as u64) as usize;
 
         for i in 0..to_consume {
-            let seq = self.cursor + i as u64;
+            let seq = self.cursor + (i as u64);
             let end_of_batch = i == to_consume - 1;
-            
+
             unsafe {
                 let event = self.ring_buffer.read_slot(seq);
                 handler.on_event(&event, seq, end_of_batch);
@@ -82,11 +82,5 @@ impl<T: RingBufferEntry> MpscConsumerBuilder<T> {
     pub fn build(self) -> Result<MpscConsumer<T>, &'static str> {
         let ring_buffer = self.ring_buffer.ok_or("Ring buffer not set")?;
         Ok(MpscConsumer::new(ring_buffer, self.batch_size))
-    }
-}
-
-impl<T: RingBufferEntry> Default for MpscConsumerBuilder<T> {
-    fn default() -> Self {
-        Self::new()
     }
 }

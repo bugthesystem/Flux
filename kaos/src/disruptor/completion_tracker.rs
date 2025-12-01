@@ -170,12 +170,6 @@ impl CompletionTracker {
     }
 }
 
-impl Default for CompletionTracker {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 // RAII Guards for safe read-then-commit pattern
 
 /// Trait for ring buffers that support the read-then-commit pattern.
