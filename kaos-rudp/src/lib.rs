@@ -49,10 +49,10 @@ thread_local! {
     static RECV_LENS: RefCell<Vec<usize>> = RefCell::new(vec![0usize; 64]);
 }
 
-mod reliable_window_ring_buffer;
+mod window;
 mod sendmmsg;
 
-use reliable_window_ring_buffer::BitmapWindow;
+use window::BitmapWindow;
 
 /// Message types for reliable UDP protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

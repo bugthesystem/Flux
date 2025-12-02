@@ -29,4 +29,4 @@ path = "tests/core_ordering_tests.rs"
 
 [[test]]
 name = "ipc_stress"
-path = "tests/ipc_stress_tests.rs"
+path = "tests/ipc_stress.rs"

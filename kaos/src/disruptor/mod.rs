@@ -1,45 +1,47 @@
 //! Lock-free ring buffers (LMAX Disruptor pattern).
 //!
-//! - `RingBuffer<T>` - SPSC, generic slots
-//! - `MessageRingBuffer` - SPSC, 128B variable messages
-//! - `MpscRingBuffer<T>` - Multiple producers
-//! - `SpmcRingBuffer<T>` - Fan-out
-//! - `MpmcRingBuffer<T>` - Full flexibility
+//! - `RingBuffer<T>` - SPSC, single consumer (fastest)
+//! - `BroadcastRingBuffer<T>` - SPSC, multiple consumers see ALL messages
+//! - `SpmcRingBuffer<T>` - Fan-out work distribution (each msg to ONE consumer)
+//! - `MpscRingBuffer<T>` - Multiple producers, single consumer
+//! - `MpmcRingBuffer<T>` - Full flexibility (slowest)
 
-pub mod ring_buffer_core;
-pub mod completion_tracker;
-pub mod spsc;
-pub mod mpsc;
-pub mod spmc;
-pub mod mpmc;
-pub mod message_slot;
-pub mod slots;
-pub mod common;
+mod slots;
+mod completion;
+mod single;
+mod multi;
+mod ipc;
 pub mod macros;
 
-// Ring buffer types
-pub use spsc::{ RingBuffer, MessageRingBuffer, SharedRingBuffer };
-
-// MessageRingBuffer producer/consumer
-pub use spsc::{ Producer, ProducerBuilder, Consumer, ConsumerBuilder, EventHandler };
-
-pub use mpsc::{
+// Re-exports
+pub use slots::{ Slot8, Slot16, Slot32, Slot64, MessageSlot };
+pub use completion::{ ReadGuard, BatchReadGuard, ReadableRing, CompletionTracker };
+pub use single::{
+    RingBuffer,
+    BroadcastRingBuffer,
+    MessageRingBuffer,
+    Producer,
+    ProducerBuilder,
+    Consumer,
+    ConsumerBuilder,
+    EventHandler,
+};
+pub use multi::{
     MpscRingBuffer,
     MpscProducer,
     MpscProducerBuilder,
     MpscConsumer,
     MpscConsumerBuilder,
     MpscEventHandler,
+    SpmcRingBuffer,
+    MpmcRingBuffer,
 };
-pub use spmc::SpmcRingBuffer;
-pub use mpmc::MpmcRingBuffer;
-pub use completion_tracker::{ ReadGuard, BatchReadGuard, ReadableRing, CompletionTracker };
-pub use message_slot::MessageSlot;
-pub use slots::Slot8;
-pub use slots::{ Slot16, Slot32, Slot64 };
+pub use ipc::SharedRingBuffer;
 
 use crate::error::{ Result, KaosError };
-use crate::constants::DEFAULT_RING_BUFFER_SIZE;
+
+/// Default ring buffer size (must be power of 2)
+const DEFAULT_RING_BUFFER_SIZE: usize = 1024 * 1024; // 1M slots
 
 /// Sequence number type for ring buffer positions
 pub type Sequence = u64;

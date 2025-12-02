@@ -1,6 +1,13 @@
 # Kaos
 
-Lock-free ring buffers for inter-thread, inter-process, and network communication.
+<p align="left" style="display: flex; align-items: center; gap: 1em;">
+  <img src="logo.svg" alt="Kaos Logo" width="90" height="90"/>
+  <span>
+    Lock-free ring buffers for inter-thread, inter-process, and network communication.
+  </span>
+</p>
+
+
 
 > **⚠️ Preview Release (0.1.0-preview)**
 >
@@ -123,13 +130,14 @@ All unsafe blocks are documented with safety invariants.
 
 ```bash
 # Core ring buffer
-cargo bench -p kaos --bench bench_criterion
+cargo bench -p kaos --bench bench_core
 
-# IPC
-cargo bench -p kaos-ipc --bench bench_ipc
+# Real-world trace (100M/500M/1B events)
+cargo bench -p kaos --bench bench_trace
 
-# RUDP
-cargo bench -p kaos-rudp --bench bench_rudp
+# IPC / RUDP
+cargo bench -p kaos-ipc
+cargo bench -p kaos-rudp
 ```
 
 | Component | Metric | Result |
@@ -152,9 +160,7 @@ Mobile user interaction tracking (click, scroll, pageview, purchase, login):
 | kaos-rudp | 500K | 3.0 M/s | ✅ 100% delivery |
 
 ```bash
-cargo bench -p kaos --bench bench_trace_events
-cargo bench -p kaos-ipc --bench bench_trace_events
-cargo bench -p kaos-rudp --bench bench_trace_events
+cargo bench -p kaos --bench bench_trace -- "1B"
 ```
 
 ### Comparison vs disruptor-rs

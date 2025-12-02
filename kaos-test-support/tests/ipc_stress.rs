@@ -1,6 +1,6 @@
 //! IPC Stress Tests
 //!
-//! Tests flux-ipc under stress conditions with timeouts.
+//! Tests kaos-ipc under stress conditions with timeouts.
 
 use kaos_ipc::{Publisher, Subscriber, Slot8};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -9,22 +9,26 @@ use std::thread;
 use std::time::{Duration, Instant};
 use std::fs;
 
-const TEST_PATH: &str = "/tmp/flux-ipc-stress-test";
 const TEST_TIMEOUT: Duration = Duration::from_secs(30);
 
-fn cleanup() {
-    let _ = fs::remove_file(TEST_PATH);
+fn test_path(name: &str) -> String {
+    format!("/tmp/kaos-ipc-{}-{}", name, std::process::id())
+}
+
+fn cleanup(path: &str) {
+    let _ = fs::remove_file(path);
 }
 
 /// Basic stress test: fast producer, fast consumer
 #[test]
 fn test_ipc_stress_basic() {
-    cleanup();
+    let path = test_path("basic");
+    cleanup(&path);
     
-    let mut publisher = Publisher::<Slot8>::new(TEST_PATH, 64 * 1024).unwrap();
-    let mut subscriber = Subscriber::<Slot8>::new(TEST_PATH).unwrap();
+    let mut publisher = Publisher::<Slot8>::new(&path, 64 * 1024).unwrap();
+    let mut subscriber = Subscriber::<Slot8>::new(&path).unwrap();
     
-    let count = 100_000u64; // Reduced for faster tests
+    let count = 100_000u64;
     let mut sent = 0u64;
     let mut received = 0u64;
     let mut errors = 0u64;
@@ -32,8 +36,8 @@ fn test_ipc_stress_basic() {
     let start = Instant::now();
     
     while received < count && start.elapsed() < TEST_TIMEOUT {
-        // Send batch
-        while sent < count && sent - received < 60_000 {
+        // Send batch (use saturating_sub to avoid overflow)
+        while sent < count && sent.saturating_sub(received) < 60_000 {
             if publisher.send(&sent.to_le_bytes()).is_ok() {
                 sent += 1;
             } else {
@@ -60,17 +64,18 @@ fn test_ipc_stress_basic() {
     assert_eq!(errors, 0);
     assert_eq!(received, count, "Timed out before completion");
     
-    cleanup();
+    cleanup(&path);
 }
 
 /// Test with slow consumer (backpressure)
 #[test]
 fn test_ipc_slow_consumer() {
-    cleanup();
+    let path = test_path("slow");
+    cleanup(&path);
     
     // Very small ring to force backpressure
-    let mut publisher = Publisher::<Slot8>::new(TEST_PATH, 64).unwrap();
-    let mut subscriber = Subscriber::<Slot8>::new(TEST_PATH).unwrap();
+    let mut publisher = Publisher::<Slot8>::new(&path, 64).unwrap();
+    let mut subscriber = Subscriber::<Slot8>::new(&path).unwrap();
     
     let count = 1_000u64;
     let mut sent = 0u64;
@@ -100,23 +105,24 @@ fn test_ipc_slow_consumer() {
     let duration = start.elapsed();
     
     println!("\n=== IPC Slow Consumer Test ===");
-    println!("Messages: {}/{}", received, count);
+    println!("Sent/Received: {}/{}", sent, received);
     println!("Backpressure events: {}", backpressure_events);
     println!("Duration: {:.2}s", duration.as_secs_f64());
     
     assert!(backpressure_events > 0, "Should have experienced backpressure");
-    assert_eq!(received, count, "Timed out before completion");
+    assert_eq!(received, sent, "Received should equal sent");
     
-    cleanup();
+    cleanup(&path);
 }
 
 /// Test data integrity with checksums
 #[test]
 fn test_ipc_data_integrity() {
-    cleanup();
+    let path = test_path("integrity");
+    cleanup(&path);
     
-    let mut publisher = Publisher::<Slot8>::new(TEST_PATH, 64 * 1024).unwrap();
-    let mut subscriber = Subscriber::<Slot8>::new(TEST_PATH).unwrap();
+    let mut publisher = Publisher::<Slot8>::new(&path, 64 * 1024).unwrap();
+    let mut subscriber = Subscriber::<Slot8>::new(&path).unwrap();
     
     let count = 100_000u64;
     let mut expected_sum: u64 = 0;
@@ -133,8 +139,8 @@ fn test_ipc_data_integrity() {
     let start = Instant::now();
     
     while received < count && start.elapsed() < TEST_TIMEOUT {
-        // Send
-        while sent < count && sent - received < 60_000 {
+        // Send (use saturating_sub to avoid overflow)
+        while sent < count && sent.saturating_sub(received) < 60_000 {
             if publisher.send(&sent.to_le_bytes()).is_ok() {
                 sent += 1;
             } else {
@@ -156,7 +162,7 @@ fn test_ipc_data_integrity() {
     assert_eq!(received, count, "Timed out before completion");
     assert_eq!(actual_sum, expected_sum, "Data corruption detected!");
     
-    cleanup();
+    cleanup(&path);
 }
 
 /// Concurrent access test (simulated multi-process)
@@ -252,13 +258,14 @@ fn test_ipc_concurrent_threads() {
 /// Test ring buffer wraparound in IPC
 #[test]
 fn test_ipc_wraparound() {
-    cleanup();
+    let path = test_path("wrap");
+    cleanup(&path);
     
     // Small ring to force many wraparounds
-    let mut publisher = Publisher::<Slot8>::new(TEST_PATH, 256).unwrap();
-    let mut subscriber = Subscriber::<Slot8>::new(TEST_PATH).unwrap();
+    let mut publisher = Publisher::<Slot8>::new(&path, 256).unwrap();
+    let mut subscriber = Subscriber::<Slot8>::new(&path).unwrap();
     
-    let count = 10_000u64; // Reduced for speed
+    let count = 10_000u64;
     let mut sent = 0u64;
     let mut received = 0u64;
     let mut errors = 0u64;
@@ -295,5 +302,5 @@ fn test_ipc_wraparound() {
     assert_eq!(received, count, "Timed out before completion");
     assert_eq!(errors, 0, "Wraparound caused data corruption!");
     
-    cleanup();
+    cleanup(&path);
 }

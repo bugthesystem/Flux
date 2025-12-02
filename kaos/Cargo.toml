@@ -28,20 +28,24 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [target.'cfg(loom)'.dependencies]
 loom = "0.7"
 
+# ============================================================================
+# Benchmarks (5 consolidated files)
+# ============================================================================
+
 [[bench]]
-name = "bench_criterion"
+name = "bench_core"
 harness = false
 
 [[bench]]
-name = "bench_trace_events"
+name = "bench_slots"
 harness = false
 
 [[bench]]
-name = "bench_all_slots"
+name = "bench_patterns"
 harness = false
 
 [[bench]]
-name = "bench_spmc_mpmc"
+name = "bench_api"
 harness = false
 
 [[bench]]
@@ -49,44 +53,12 @@ name = "bench_verify"
 harness = false
 
 [[bench]]
-name = "bench_mapped_vs_heap"
+name = "bench_trace"
 harness = false
 
-[[bench]]
-name = "bench_spsc"
-harness = false
-
-[[bench]]
-name = "bench_message_slot"
-harness = false
-
-[[bench]]
-name = "bench_macros"
-harness = false
-
-[[bench]]
-name = "bench_fast"
-harness = false
-
-[[bench]]
-name = "bench_minimal"
-harness = false
-
-[[bench]]
-name = "bench_fast_slots_macro"
-harness = false
-
-[[bench]]
-name = "bench_spsc_api"
-harness = false
-
-[[bench]]
-name = "bench_spsc_macro"
-harness = false
-
-[[bench]]
-name = "bench_verify_messageslot"
-harness = false
+# ============================================================================
+# Examples
+# ============================================================================
 
 [[example]]
 name = "spsc_basic"

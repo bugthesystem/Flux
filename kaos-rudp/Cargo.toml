@@ -26,6 +26,11 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "bench_rudp"
 harness = false
 
-[[bench]]
-name = "bench_trace_events"
-harness = false
+[[example]]
+name = "rudp_bench"
+
+[[example]]
+name = "example_reliable_udp_server"
+
+[[example]]
+name = "example_reliable_udp_client"

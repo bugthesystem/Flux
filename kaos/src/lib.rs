@@ -1,6 +1,5 @@
 //! Kaos - Lock-free ring buffers
 
-pub mod constants;
 pub mod disruptor;
 pub mod error;
 pub mod crc32;
