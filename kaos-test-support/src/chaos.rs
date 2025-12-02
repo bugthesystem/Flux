@@ -9,13 +9,22 @@ use std::time::Duration;
 #[derive(Debug, Clone)]
 pub enum ChaosEvent {
     /// Delay processing by a random amount
-    Delay { min_us: u64, max_us: u64 },
+    Delay {
+        min_us: u64,
+        max_us: u64,
+    },
     /// Corrupt a byte at a random position
-    CorruptByte { position: Option<usize> },
+    CorruptByte {
+        position: Option<usize>,
+    },
     /// Corrupt multiple bytes
-    CorruptBytes { count: usize },
+    CorruptBytes {
+        count: usize,
+    },
     /// Truncate data to a random length
-    Truncate { min_len: usize },
+    Truncate {
+        min_len: usize,
+    },
     /// Duplicate the data
     Duplicate,
     /// Reorder (swap with next)
@@ -50,12 +59,6 @@ pub struct ChaosMonkey {
     events_triggered: usize,
 }
 
-impl Default for ChaosMonkey {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ChaosMonkey {
     pub fn new() -> Self {
         Self {
@@ -81,9 +84,7 @@ impl ChaosMonkey {
 
     /// Create a mild chaos monkey for basic testing
     pub fn mild() -> Self {
-        Self::new()
-            .with_delay_probability(0.01)
-            .with_corruption_probability(0.001)
+        Self::new().with_delay_probability(0.01).with_corruption_probability(0.001)
     }
 
     pub fn with_delay_probability(mut self, prob: f64) -> Self {
@@ -131,7 +132,7 @@ impl ChaosMonkey {
         if data.is_empty() {
             return false;
         }
-        
+
         if self.rng.gen::<f64>() < self.corruption_probability {
             let pos = self.rng.gen_range(0..data.len());
             data[pos] = self.rng.gen();
@@ -146,7 +147,7 @@ impl ChaosMonkey {
         if data.len() <= min_len {
             return false;
         }
-        
+
         if self.rng.gen::<f64>() < self.truncate_probability {
             let new_len = self.rng.gen_range(min_len..data.len());
             data.truncate(new_len);
@@ -247,7 +248,7 @@ mod tests {
         let mut monkey = ChaosMonkey::new();
         let original = vec![1, 2, 3, 4, 5];
         let mut data = original.clone();
-        
+
         // With 0 probability, should never corrupt
         for _ in 0..1000 {
             monkey.maybe_corrupt(&mut data);
@@ -260,7 +261,7 @@ mod tests {
         let mut monkey = ChaosMonkey::new().with_corruption_probability(1.0);
         let original = vec![1, 2, 3, 4, 5];
         let mut data = original.clone();
-        
+
         let corrupted = monkey.maybe_corrupt(&mut data);
         assert!(corrupted);
         assert_ne!(data, original);
@@ -270,14 +271,13 @@ mod tests {
     fn test_aggressive_triggers_events() {
         let mut monkey = ChaosMonkey::aggressive();
         let mut data = vec![0u8; 100];
-        
+
         for _ in 0..10000 {
             monkey.maybe_corrupt(&mut data);
             monkey.maybe_delay();
         }
-        
+
         // Should have triggered some events
         assert!(monkey.events_triggered() > 0);
     }
 }
-

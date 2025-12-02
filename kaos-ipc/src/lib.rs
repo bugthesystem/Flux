@@ -51,24 +51,6 @@ impl<T: kaos::disruptor::RingBufferEntry> Publisher<T> {
     pub fn send(&mut self, data: &[u8]) -> io::Result<u64> {
         self.inner.try_send(data)
     }
-
-    /// Try to claim a slot for zero-copy write.
-    pub fn try_claim(&mut self) -> Option<u64> {
-        self.inner.try_claim()
-    }
-
-    /// Write to a claimed slot.
-    ///
-    /// # Safety
-    /// Must have claimed the sequence first.
-    pub unsafe fn write_slot(&mut self, seq: u64, value: T) {
-        self.inner.write_slot(seq, value);
-    }
-
-    /// Publish slots up to sequence.
-    pub fn publish(&mut self, seq: u64) {
-        self.inner.publish(seq);
-    }
 }
 
 /// Subscriber for inter-process communication.
@@ -93,19 +75,6 @@ impl<T: kaos::disruptor::RingBufferEntry> Subscriber<T> {
     /// Get number of available messages.
     pub fn available(&mut self) -> u64 {
         self.inner.available()
-    }
-
-    /// Read a single slot.
-    ///
-    /// # Safety
-    /// Caller must ensure slot is published.
-    pub unsafe fn read_slot(&self, seq: u64) -> T {
-        self.inner.read_slot(seq)
-    }
-
-    /// Advance consumer after reading.
-    pub fn advance(&mut self, seq: u64) {
-        self.inner.advance_consumer(seq);
     }
 }
 

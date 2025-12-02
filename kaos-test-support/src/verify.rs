@@ -1,7 +1,7 @@
 //! Data verification utilities for testing correctness.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::{ HashMap, HashSet };
+use std::sync::atomic::{ AtomicU64, Ordering };
 use std::sync::Mutex;
 
 /// Verifies data integrity by checking sequence numbers and content.
@@ -41,7 +41,7 @@ impl DataVerifier {
     /// Verify received data
     pub fn verify(&self, seq: u64, data: &[u8]) -> VerifyResult {
         let hash = simple_hash(data);
-        
+
         // Check for duplicates
         {
             let mut verified = self.verified.lock().unwrap();
@@ -87,16 +87,14 @@ impl DataVerifier {
     }
 }
 
-impl Default for DataVerifier {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VerifyResult {
     Ok,
-    Mismatch { seq: u64, expected: u64, actual: u64 },
+    Mismatch {
+        seq: u64,
+        expected: u64,
+        actual: u64,
+    },
     Duplicate,
     Missing,
 }
@@ -111,13 +109,9 @@ pub struct VerifyStats {
 }
 
 impl VerifyStats {
-    pub fn is_ok(&self) -> bool {
-        self.mismatches == 0
-    }
-
     pub fn delivery_rate(&self) -> f64 {
         if self.expected_count > 0 {
-            self.verified_count as f64 / self.expected_count as f64
+            (self.verified_count as f64) / (self.expected_count as f64)
         } else {
             1.0
         }
@@ -169,20 +163,29 @@ impl SequenceChecker {
     /// Check a sequence number
     pub fn check(&self, seq: u64) -> SequenceStatus {
         self.total_seen.fetch_add(1, Ordering::Relaxed);
-        
+
         // Update highest seen
         let mut highest = self.highest_seen.load(Ordering::Relaxed);
         while seq > highest {
-            match self.highest_seen.compare_exchange_weak(
-                highest, seq, Ordering::Relaxed, Ordering::Relaxed
-            ) {
-                Ok(_) => break,
-                Err(h) => highest = h,
+            match
+                self.highest_seen.compare_exchange_weak(
+                    highest,
+                    seq,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed
+                )
+            {
+                Ok(_) => {
+                    break;
+                }
+                Err(h) => {
+                    highest = h;
+                }
             }
         }
 
         let expected = self.next_expected.load(Ordering::Relaxed);
-        
+
         if seq == expected {
             // Perfect - in order
             self.next_expected.store(seq + 1, Ordering::Relaxed);
@@ -208,7 +211,9 @@ impl SequenceChecker {
 
     /// Get total gap count (number of missing sequences)
     pub fn total_gap_size(&self) -> u64 {
-        self.gaps.lock().unwrap()
+        self.gaps
+            .lock()
+            .unwrap()
             .iter()
             .map(|(start, end)| end - start + 1)
             .sum()
@@ -221,15 +226,12 @@ impl SequenceChecker {
             total_seen: self.total_seen.load(Ordering::Relaxed),
             highest_seen: self.highest_seen.load(Ordering::Relaxed),
             gap_count: gaps.len() as u64,
-            total_missing: gaps.iter().map(|(s, e)| e - s + 1).sum(),
+            total_missing: gaps
+                .iter()
+                .map(|(s, e)| e - s + 1)
+                .sum(),
             out_of_order: self.out_of_order.load(Ordering::Relaxed),
         }
-    }
-}
-
-impl Default for SequenceChecker {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -237,7 +239,10 @@ impl Default for SequenceChecker {
 pub enum SequenceStatus {
     InOrder,
     OutOfOrder,
-    Gap { start: u64, end: u64 },
+    Gap {
+        start: u64,
+        end: u64,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -256,7 +261,7 @@ impl SequenceStats {
 
     pub fn delivery_rate(&self) -> f64 {
         if self.highest_seen > 0 {
-            self.total_seen as f64 / (self.highest_seen + 1) as f64
+            (self.total_seen as f64) / ((self.highest_seen + 1) as f64)
         } else {
             1.0
         }
@@ -270,18 +275,18 @@ mod tests {
     #[test]
     fn test_data_verifier() {
         let verifier = DataVerifier::new();
-        
+
         // Register expected
         verifier.expect(0, b"hello");
         verifier.expect(1, b"world");
-        
+
         // Verify correct data
         assert_eq!(verifier.verify(0, b"hello"), VerifyResult::Ok);
         assert_eq!(verifier.verify(1, b"world"), VerifyResult::Ok);
-        
+
         // Verify duplicate
         assert_eq!(verifier.verify(0, b"hello"), VerifyResult::Duplicate);
-        
+
         let stats = verifier.stats();
         assert_eq!(stats.verified_count, 2);
         assert_eq!(stats.duplicates, 1);
@@ -291,7 +296,7 @@ mod tests {
     fn test_data_verifier_mismatch() {
         let verifier = DataVerifier::new();
         verifier.expect(0, b"expected");
-        
+
         let result = verifier.verify(0, b"different");
         assert!(matches!(result, VerifyResult::Mismatch { .. }));
         assert!(verifier.has_errors());
@@ -300,11 +305,11 @@ mod tests {
     #[test]
     fn test_sequence_checker_in_order() {
         let checker = SequenceChecker::new();
-        
+
         for seq in 0..100 {
             assert_eq!(checker.check(seq), SequenceStatus::InOrder);
         }
-        
+
         let stats = checker.stats();
         assert!(stats.is_perfect());
         assert_eq!(stats.total_seen, 100);
@@ -313,12 +318,12 @@ mod tests {
     #[test]
     fn test_sequence_checker_gap() {
         let checker = SequenceChecker::new();
-        
+
         checker.check(0);
         checker.check(1);
         // Skip 2, 3, 4
         let status = checker.check(5);
-        
+
         assert!(matches!(status, SequenceStatus::Gap { start: 2, end: 4 }));
         assert_eq!(checker.total_gap_size(), 3);
     }
@@ -326,13 +331,12 @@ mod tests {
     #[test]
     fn test_sequence_checker_out_of_order() {
         let checker = SequenceChecker::new();
-        
+
         checker.check(0);
         checker.check(2); // Gap
         checker.check(1); // Out of order (late)
-        
+
         let stats = checker.stats();
         assert_eq!(stats.out_of_order, 1);
     }
 }
-

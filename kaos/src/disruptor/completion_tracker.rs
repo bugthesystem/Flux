@@ -222,12 +222,13 @@ impl<'a, T: RingBufferEntry, R: ReadableRing<T>> BatchReadGuard<'a, T, R> {
             _marker: PhantomData,
         }
     }
+
     pub fn count(&self) -> usize {
         self.count
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        (0..self.count).map(move |i| { self.ring.read_slot_ref(self.start_sequence + (i as u64)) })
+        (0..self.count).map(move |i| self.ring.read_slot_ref(self.start_sequence + (i as u64)))
     }
 }
 

@@ -121,12 +121,6 @@ impl StressMetrics {
     }
 }
 
-impl Default for StressMetrics {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Shared counters for stress testing
 pub struct StressCounters {
     pub sent: AtomicU64,
@@ -180,19 +174,6 @@ impl StressCounters {
             errors: self.errors.load(Ordering::Relaxed),
             duration: Duration::ZERO,
             peak_rate: 0.0,
-        }
-    }
-}
-
-impl Default for StressCounters {
-    fn default() -> Self {
-        Self {
-            sent: AtomicU64::new(0),
-            received: AtomicU64::new(0),
-            bytes_sent: AtomicU64::new(0),
-            bytes_received: AtomicU64::new(0),
-            errors: AtomicU64::new(0),
-            running: AtomicBool::new(true),
         }
     }
 }

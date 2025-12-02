@@ -10,7 +10,7 @@
 
 #[cfg(loom)]
 mod loom_tests {
-    use loom::sync::atomic::{AtomicU64, Ordering};
+    use loom::sync::atomic::{ AtomicU64, Ordering };
     use loom::sync::Arc;
     use loom::thread;
 
@@ -128,14 +128,20 @@ mod loom_tests {
             let p1 = thread::spawn(move || {
                 let mut current = c1.load(Ordering::Relaxed);
                 loop {
-                    match c1.compare_exchange_weak(
-                        current,
-                        current + 1,
-                        Ordering::AcqRel,
-                        Ordering::Relaxed,
-                    ) {
-                        Ok(seq) => return seq,
-                        Err(actual) => current = actual,
+                    match
+                        c1.compare_exchange_weak(
+                            current,
+                            current + 1,
+                            Ordering::AcqRel,
+                            Ordering::Relaxed
+                        )
+                    {
+                        Ok(seq) => {
+                            return seq;
+                        }
+                        Err(actual) => {
+                            current = actual;
+                        }
                     }
                 }
             });
@@ -144,14 +150,20 @@ mod loom_tests {
             let p2 = thread::spawn(move || {
                 let mut current = c2.load(Ordering::Relaxed);
                 loop {
-                    match c2.compare_exchange_weak(
-                        current,
-                        current + 1,
-                        Ordering::AcqRel,
-                        Ordering::Relaxed,
-                    ) {
-                        Ok(seq) => return seq,
-                        Err(actual) => current = actual,
+                    match
+                        c2.compare_exchange_weak(
+                            current,
+                            current + 1,
+                            Ordering::AcqRel,
+                            Ordering::Relaxed
+                        )
+                    {
+                        Ok(seq) => {
+                            return seq;
+                        }
+                        Err(actual) => {
+                            current = actual;
+                        }
                     }
                 }
             });
@@ -177,21 +189,30 @@ mod loom_tests {
                     thread::spawn(move || {
                         let mut current = c.load(Ordering::Relaxed);
                         loop {
-                            match c.compare_exchange_weak(
-                                current,
-                                current + 1,
-                                Ordering::AcqRel,
-                                Ordering::Relaxed,
-                            ) {
-                                Ok(seq) => return seq,
-                                Err(actual) => current = actual,
+                            match
+                                c.compare_exchange_weak(
+                                    current,
+                                    current + 1,
+                                    Ordering::AcqRel,
+                                    Ordering::Relaxed
+                                )
+                            {
+                                Ok(seq) => {
+                                    return seq;
+                                }
+                                Err(actual) => {
+                                    current = actual;
+                                }
                             }
                         }
                     })
                 })
                 .collect();
 
-            let mut seqs: Vec<_> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+            let mut seqs: Vec<_> = handles
+                .into_iter()
+                .map(|h| h.join().unwrap())
+                .collect();
             seqs.sort();
 
             // All sequences must be unique and sequential
@@ -220,14 +241,20 @@ mod loom_tests {
                 let current = rc1.load(Ordering::Relaxed);
                 let available = pc1.load(Ordering::Acquire);
                 if current < available {
-                    match rc1.compare_exchange_weak(
-                        current,
-                        current + 1,
-                        Ordering::AcqRel,
-                        Ordering::Relaxed,
-                    ) {
-                        Ok(seq) => return Some(seq),
-                        Err(_) => return None,
+                    match
+                        rc1.compare_exchange_weak(
+                            current,
+                            current + 1,
+                            Ordering::AcqRel,
+                            Ordering::Relaxed
+                        )
+                    {
+                        Ok(seq) => {
+                            return Some(seq);
+                        }
+                        Err(_) => {
+                            return None;
+                        }
                     }
                 }
                 None
@@ -238,14 +265,20 @@ mod loom_tests {
                 let current = rc2.load(Ordering::Relaxed);
                 let available = pc2.load(Ordering::Acquire);
                 if current < available {
-                    match rc2.compare_exchange_weak(
-                        current,
-                        current + 1,
-                        Ordering::AcqRel,
-                        Ordering::Relaxed,
-                    ) {
-                        Ok(seq) => return Some(seq),
-                        Err(_) => return None,
+                    match
+                        rc2.compare_exchange_weak(
+                            current,
+                            current + 1,
+                            Ordering::AcqRel,
+                            Ordering::Relaxed
+                        )
+                    {
+                        Ok(seq) => {
+                            return Some(seq);
+                        }
+                        Err(_) => {
+                            return None;
+                        }
                     }
                 }
                 None
@@ -255,7 +288,10 @@ mod loom_tests {
             let r2 = c2.join().unwrap();
 
             // At least one should succeed, possibly both with different sequences
-            let successes: Vec<_> = [r1, r2].iter().filter_map(|&x| x).collect();
+            let successes: Vec<_> = [r1, r2]
+                .iter()
+                .filter_map(|&x| x)
+                .collect();
             assert!(!successes.is_empty());
 
             // All successful claims must be unique
@@ -319,14 +355,20 @@ mod loom_tests {
             let p1 = thread::spawn(move || {
                 let mut current = pc1.load(Ordering::Relaxed);
                 loop {
-                    match pc1.compare_exchange_weak(
-                        current,
-                        current + 1,
-                        Ordering::AcqRel,
-                        Ordering::Relaxed,
-                    ) {
-                        Ok(_) => return true,
-                        Err(actual) => current = actual,
+                    match
+                        pc1.compare_exchange_weak(
+                            current,
+                            current + 1,
+                            Ordering::AcqRel,
+                            Ordering::Relaxed
+                        )
+                    {
+                        Ok(_) => {
+                            return true;
+                        }
+                        Err(actual) => {
+                            current = actual;
+                        }
                     }
                 }
             });
@@ -335,14 +377,20 @@ mod loom_tests {
             let p2 = thread::spawn(move || {
                 let mut current = pc2.load(Ordering::Relaxed);
                 loop {
-                    match pc2.compare_exchange_weak(
-                        current,
-                        current + 1,
-                        Ordering::AcqRel,
-                        Ordering::Relaxed,
-                    ) {
-                        Ok(_) => return true,
-                        Err(actual) => current = actual,
+                    match
+                        pc2.compare_exchange_weak(
+                            current,
+                            current + 1,
+                            Ordering::AcqRel,
+                            Ordering::Relaxed
+                        )
+                    {
+                        Ok(_) => {
+                            return true;
+                        }
+                        Err(actual) => {
+                            current = actual;
+                        }
                     }
                 }
             });
@@ -353,14 +401,20 @@ mod loom_tests {
                 let current = cc1.load(Ordering::Relaxed);
                 let available = pc3.load(Ordering::Acquire);
                 if current < available {
-                    match cc1.compare_exchange_weak(
-                        current,
-                        current + 1,
-                        Ordering::AcqRel,
-                        Ordering::Relaxed,
-                    ) {
-                        Ok(seq) => return Some(seq),
-                        Err(_) => return None,
+                    match
+                        cc1.compare_exchange_weak(
+                            current,
+                            current + 1,
+                            Ordering::AcqRel,
+                            Ordering::Relaxed
+                        )
+                    {
+                        Ok(seq) => {
+                            return Some(seq);
+                        }
+                        Err(_) => {
+                            return None;
+                        }
                     }
                 }
                 None
