@@ -13,9 +13,11 @@ repository = "https://github.com/bugthesystem/kaos"
 [features]
 default = []
 debug = []
+driver = ["kaos-ipc"]
 
 [dependencies]
 kaos = { path = "../kaos" }
+kaos-ipc = { path = "../kaos-ipc", optional = true }
 bytemuck = { version = "1.14", features = ["derive"] }
 libc = "0.2"
 

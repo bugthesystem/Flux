@@ -151,6 +151,20 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
         self.cached_remote_seq.saturating_sub(self.local_seq)
     }
 
+    /// Try to receive a single message (non-blocking, for polling)
+    pub fn try_receive(&mut self) -> Option<T> {
+        debug_assert!(!self.is_producer, "try_receive() is for consumer only");
+        let producer_seq = self.header().producer_seq.load(Ordering::Acquire);
+        if self.local_seq >= producer_seq { return None; }
+        
+        let slot = unsafe { std::ptr::read_volatile(self.slot_ptr(self.local_seq)) };
+        self.local_seq = self.local_seq.wrapping_add(1);
+        let seq = self.local_seq;
+        self.header_mut().consumer_seq.store(seq, Ordering::Release);
+        Some(slot)
+    }
+
+    /// Receive with callback (batch, more efficient for high throughput)
     pub fn receive<F: FnMut(&T)>(&mut self, mut callback: F) -> usize {
         debug_assert!(!self.is_producer, "receive() is for consumer only");
         let producer_seq = self.header().producer_seq.load(Ordering::Acquire);

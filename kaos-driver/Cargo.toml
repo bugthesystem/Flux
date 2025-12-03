@@ -1,0 +1,19 @@
+[package]
+name = "kaos-driver"
+version = "0.1.0"
+edition = "2021"
+description = "Media driver for kaos IPC - offloads network I/O from apps"
+
+[dependencies]
+kaos-ipc = { path = "../kaos-ipc" }
+kaos-rudp = { path = "../kaos-rudp", optional = true }
+ctrlc = "3.4"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+io-uring = { version = "0.7", optional = true }
+
+[features]
+default = []
+uring = ["io-uring"]
+reliable = ["kaos-rudp"]

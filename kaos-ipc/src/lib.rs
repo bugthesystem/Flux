@@ -1,72 +1,112 @@
-//! # kaos-ipc - Inter-process communication using kaos shared memory ring buffers.
+//! kaos-ipc - Zero-copy inter-process communication via shared memory.
+//!
+//! ```rust,no_run
+//! use kaos_ipc::{Publisher, Subscriber};
+//!
+//! // Process A
+//! let mut pub_ = Publisher::create("/tmp/ipc", 1024).unwrap();
+//! pub_.send(42u64).unwrap();
+//!
+//! // Process B  
+//! let mut sub = Subscriber::open("/tmp/ipc").unwrap();
+//! while let Some(val) = sub.try_receive() {
+//!     println!("Got: {}", val);
+//! }
+//! ```
 
 use std::path::Path;
 use std::io;
+use kaos::disruptor::{SharedRingBuffer, Slot8};
 
-pub use kaos::disruptor::{SharedRingBuffer, Slot8, Slot16, Slot32, Slot64, MessageSlot};
-
-pub type IpcSlot = MessageSlot;
-
-pub struct Publisher<T: kaos::disruptor::RingBufferEntry = IpcSlot> {
-    inner: SharedRingBuffer<T>,
+/// Publisher (producer) - creates the shared memory file
+pub struct Publisher {
+    inner: SharedRingBuffer<Slot8>,
 }
 
-impl<T: kaos::disruptor::RingBufferEntry> Publisher<T> {
-    pub fn new<P: AsRef<Path>>(path: P, capacity: usize) -> io::Result<Self> {
+impl Publisher {
+    pub fn create<P: AsRef<Path>>(path: P, capacity: usize) -> io::Result<Self> {
         Ok(Self { inner: SharedRingBuffer::create(path, capacity)? })
     }
 
-    pub fn send(&mut self, data: &[u8]) -> io::Result<u64> { self.inner.try_send(data) }
+    /// Send a u64 value (returns sequence number)
+    pub fn send(&mut self, value: u64) -> io::Result<u64> {
+        self.inner.try_send(&value.to_le_bytes())
+    }
+
+    /// Try to send (non-blocking, returns None if full)
+    pub fn try_send(&mut self, data: &[u8]) -> Option<u64> {
+        self.inner.try_send(data).ok()
+    }
 }
 
-pub struct Subscriber<T: kaos::disruptor::RingBufferEntry = IpcSlot> {
-    inner: SharedRingBuffer<T>,
+/// Subscriber (consumer) - opens existing shared memory file
+pub struct Subscriber {
+    inner: SharedRingBuffer<Slot8>,
 }
 
-impl<T: kaos::disruptor::RingBufferEntry> Subscriber<T> {
-    pub fn new<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+impl Subscriber {
+    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         Ok(Self { inner: SharedRingBuffer::open(path)? })
     }
 
-    pub fn receive<F: FnMut(&T)>(&mut self, callback: F) -> usize { self.inner.receive(callback) }
-    pub fn available(&mut self) -> u64 { self.inner.available() }
+    /// Try to receive one message (non-blocking, for polling)
+    pub fn try_receive(&mut self) -> Option<u64> {
+        self.inner.try_receive().map(|slot| slot.value)
+    }
+
+    /// Receive all available messages via callback (batch, faster)
+    pub fn receive<F: FnMut(u64)>(&mut self, mut f: F) -> usize {
+        self.inner.receive(|slot| f(slot.value))
+    }
+
+    /// Number of messages available
+    pub fn available(&mut self) -> u64 {
+        self.inner.available()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaos::disruptor::Slot8;
     use std::fs;
 
     #[test]
-    fn test_publisher_subscriber() {
-        let path = "/tmp/kaos-ipc-test";
+    fn test_send_receive() {
+        let path = "/tmp/kaos-ipc-test-simple";
         let _ = fs::remove_file(path);
-        let mut publisher = Publisher::<Slot8>::new(path, 1024).unwrap();
-        let mut subscriber = Subscriber::<Slot8>::new(path).unwrap();
-        publisher.send(&(42u64).to_le_bytes()).unwrap();
-        let mut received = 0u64;
-        subscriber.receive(|slot| { received = slot.value; });
-        assert_eq!(received, 42);
+
+        let mut pub_ = Publisher::create(path, 1024).unwrap();
+        let mut sub = Subscriber::open(path).unwrap();
+
+        pub_.send(42).unwrap();
+        assert_eq!(sub.try_receive(), Some(42));
+
         let _ = fs::remove_file(path);
     }
 
     #[test]
-    fn test_high_throughput() {
-        let path = "/tmp/kaos-ipc-throughput";
+    fn test_throughput() {
+        let path = "/tmp/kaos-ipc-test-throughput";
         let _ = fs::remove_file(path);
-        let mut publisher = Publisher::<Slot8>::new(path, 64 * 1024).unwrap();
-        let mut subscriber = Subscriber::<Slot8>::new(path).unwrap();
-        const COUNT: u64 = 10_000;
+
+        let mut pub_ = Publisher::create(path, 64 * 1024).unwrap();
+        let mut sub = Subscriber::open(path).unwrap();
+
+        const N: u64 = 10_000;
         let mut sent = 0u64;
-        let mut received = 0u64;
-        while received < COUNT {
-            while sent < COUNT && sent.saturating_sub(received) < 60_000 {
-                if publisher.send(&sent.to_le_bytes()).is_ok() { sent += 1; } else { break; }
-            }
-            received += subscriber.receive(|_| {}) as u64;
+        let mut sum = 0u64;
+        let mut count = 0u64;
+
+        // Interleave send/receive to avoid deadlock (single thread)
+        while count < N {
+            // Send batch
+            while sent < N && pub_.send(sent).is_ok() { sent += 1; }
+            // Receive batch
+            while let Some(val) = sub.try_receive() { sum += val; count += 1; }
         }
-        assert_eq!(received, COUNT);
+
+        assert_eq!(count, N);
+        assert_eq!(sum, (0..N).sum::<u64>());
         let _ = fs::remove_file(path);
     }
 }

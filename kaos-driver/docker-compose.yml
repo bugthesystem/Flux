@@ -1,0 +1,32 @@
+# Test two kaos-driver peers talking to each other
+#
+# Usage:
+#   docker-compose up --build
+#
+# Then from host, attach apps to /tmp/kaos-send and /tmp/kaos-recv
+
+services:
+  driver-a:
+    build:
+      context: ..
+      dockerfile: kaos-driver/Dockerfile
+    command: ["0.0.0.0:9000", "driver-b:9000"]
+    volumes:
+      - /tmp:/tmp
+    networks:
+      - kaos-net
+
+  driver-b:
+    build:
+      context: ..
+      dockerfile: kaos-driver/Dockerfile
+    command: ["0.0.0.0:9000", "driver-a:9000"]
+    volumes:
+      - /tmp:/tmp
+    networks:
+      - kaos-net
+
+networks:
+  kaos-net:
+    driver: bridge
+

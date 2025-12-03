@@ -51,8 +51,12 @@ thread_local! {
 
 mod window;
 mod sendmmsg;
+#[cfg(feature = "driver")]
+pub mod driver;
 
 use window::BitmapWindow;
+#[cfg(feature = "driver")]
+pub use driver::DriverTransport;
 
 /// Message types for reliable UDP protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,10 +381,7 @@ impl ReliableUdpRingBufferTransport {
         self.send_batch_ultra(data)
     }
 
-    /// Ultra-fast batch send (Aeron-style minimal header)
-    /// - 8-byte header only (vs 24-byte standard header)
-    /// - No CRC, no timestamp
-    /// - Single UDP datagram with packed messages
+    ///  Batch send with minimal header and no CRC or timestamp
     #[inline]
     pub fn send_batch_ultra(&mut self, data: &[&[u8]]) -> std::io::Result<usize> {
         let batch_size = data.len();
