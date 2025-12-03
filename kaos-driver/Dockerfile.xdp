@@ -1,0 +1,44 @@
+# AF_XDP enabled build
+# Requires: docker build -f Dockerfile.xdp --platform linux/amd64 ..
+FROM rust:1.82-bookworm AS builder
+
+# Install Rust nightly (required for xsk-rs edition 2024)
+RUN rustup default nightly
+
+# Install XDP/eBPF build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang \
+    llvm \
+    libelf-dev \
+    linux-headers-generic \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY . .
+
+# Build with XDP feature (nightly required for edition 2024)
+RUN cargo build --release -p kaos-driver --features xdp
+RUN cargo build --release --example bench -p kaos-driver
+
+# Runtime image
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libelf1 \
+    iproute2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/kaos-driver /usr/local/bin/
+COPY --from=builder /app/target/release/examples/bench /usr/local/bin/kaos-bench
+
+# XDP requires these capabilities at runtime:
+# - CAP_NET_ADMIN: network configuration
+# - CAP_SYS_ADMIN: BPF operations  
+# - CAP_BPF: eBPF programs (Linux 5.8+)
+#
+# Run with: docker run --privileged --network host ...
+
+ENTRYPOINT ["kaos-driver"]
+CMD ["--help"]
+

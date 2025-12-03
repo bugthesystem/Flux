@@ -13,6 +13,7 @@
 | io_uring (Linux) | ✅ | kaos-driver |
 | Metrics/counters | ✅ | kaos |
 | Congestion control (AIMD) | ✅ | kaos-rudp |
+| AF_XDP (Linux) | 🔧 | kaos-driver |
 
 ## Planned
 
@@ -21,7 +22,15 @@
 | UDP multicast | Medium | One-to-many messaging |
 | Message archive | Low | Persistent stream storage |
 | Cluster support | Low | Fault-tolerant replication |
-| AF_XDP | Low | Kernel bypass networking |
+
+## AF_XDP Status
+
+Kernel bypass networking via `xsk-rs`. Requires:
+- Rust nightly (edition 2024)
+- Linux 5.4+ with CAP_NET_ADMIN, CAP_BPF
+- `--features xdp` flag
+
+See `kaos-driver/XDP_PLAN.md` for details.
 
 ## Performance Targets
 

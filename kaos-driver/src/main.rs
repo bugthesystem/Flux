@@ -14,6 +14,8 @@ use kaos_ipc::{ Publisher, Subscriber };
 
 #[cfg(all(target_os = "linux", feature = "uring"))]
 mod uring;
+#[cfg(all(target_os = "linux", feature = "xdp"))]
+mod xdp;
 
 const RING_SIZE: usize = 64 * 1024;
 #[cfg(target_os = "linux")]

@@ -1,0 +1,64 @@
+# AF_XDP test setup with virtual ethernet pair
+# Usage: docker-compose -f docker-compose-xdp.yml up
+version: '3.8'
+
+services:
+  # Setup container - creates veth pair for testing
+  setup:
+    image: alpine
+    privileged: true
+    network_mode: host
+    command: |
+      sh -c '
+        # Create virtual ethernet pair for XDP testing
+        ip link add veth-xdp0 type veth peer name veth-xdp1 2>/dev/null || true
+        ip link set veth-xdp0 up
+        ip link set veth-xdp1 up
+        ip addr add 10.0.0.1/24 dev veth-xdp0 2>/dev/null || true
+        ip addr add 10.0.0.2/24 dev veth-xdp1 2>/dev/null || true
+        echo "veth pair ready: veth-xdp0 <-> veth-xdp1"
+        sleep infinity
+      '
+
+  # XDP Driver A - sends on veth-xdp0
+  xdp-a:
+    build:
+      context: ..
+      dockerfile: kaos-driver/Dockerfile.xdp
+    depends_on:
+      - setup
+    privileged: true
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - NET_RAW
+    volumes:
+      - /sys/fs/bpf:/sys/fs/bpf
+      - /tmp:/tmp
+    command: ["10.0.0.1:9000", "10.0.0.2:9000", "/tmp/kaos-xdp-send-a", "/tmp/kaos-xdp-recv-a"]
+    environment:
+      - XDP_INTERFACE=veth-xdp0
+      - RUST_LOG=info
+
+  # XDP Driver B - receives on veth-xdp1  
+  xdp-b:
+    build:
+      context: ..
+      dockerfile: kaos-driver/Dockerfile.xdp
+    depends_on:
+      - setup
+    privileged: true
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - NET_RAW
+    volumes:
+      - /sys/fs/bpf:/sys/fs/bpf
+      - /tmp:/tmp
+    command: ["10.0.0.2:9000", "10.0.0.1:9000", "/tmp/kaos-xdp-send-b", "/tmp/kaos-xdp-recv-b"]
+    environment:
+      - XDP_INTERFACE=veth-xdp1
+      - RUST_LOG=info
+

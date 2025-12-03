@@ -193,7 +193,7 @@ All ring buffer atomics are verified with [**Loom**](https://github.com/tokio-rs
 RUSTFLAGS="--cfg loom" cargo test -p kaos --test loom_ring_buffer --release
 ```
 
-**Verified patterns:**
+**Verified patterns with Loom:**
 - ✅ SPSC cursor synchronization & batch publish
 - ✅ MPSC compare_exchange_weak racing (2 & 3 producers)
 - ✅ SPMC consumer claim contention  
@@ -205,8 +205,7 @@ RUSTFLAGS="--cfg loom" cargo test -p kaos --test loom_ring_buffer --release
 | Platform | Status |
 |----------|--------|
 | macOS ARM64 | ✅ Tested |
-| macOS x86_64 | Untested |
-| Linux | Untested |
+| Linux | In test |
 | Windows | Not supported |
 
 ## Quick Start
@@ -245,7 +244,7 @@ ring.update_consumer(9);
 - `MSG_ZEROCOPY` flag for send path (Linux 4.14+)
 
 **Protocol:**
-- Congestion control (CUBIC) for RUDP
+- Congestion control (CUBIC) for RUDP - work in progress
 - Flow control with receiver feedback
 
 ## License
