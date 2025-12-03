@@ -51,10 +51,14 @@ thread_local! {
 
 mod window;
 mod sendmmsg;
+pub mod congestion;
 #[cfg(feature = "driver")]
 pub mod driver;
 
 use window::BitmapWindow;
+use congestion::CongestionController;
+pub use congestion::CongestionController as Congestion;
+use kaos::metrics::METRICS;
 #[cfg(feature = "driver")]
 pub use driver::DriverTransport;
 
@@ -204,9 +208,10 @@ pub struct ReliableUdpRingBufferTransport {
     window_size: usize,
     next_send_seq: u64,
     _next_recv_seq: u64,
-    acked_seq: u64, // Highest sequence ACKed by receiver
+    acked_seq: u64,
     remote_addr: SocketAddr,
     remote_nak_addr: SocketAddr,
+    congestion: CongestionController,
     #[cfg(target_os = "linux")]
     batch_sender: sendmmsg::BatchSender,
     #[cfg(target_os = "linux")]
@@ -288,9 +293,10 @@ impl ReliableUdpRingBufferTransport {
             window_size,
             next_send_seq: 0,
             _next_recv_seq: 0,
-            acked_seq: 0, // Nothing ACKed yet
+            acked_seq: 0,
             remote_addr,
             remote_nak_addr,
+            congestion: CongestionController::new(64, window_size as u32),
             #[cfg(target_os = "linux")]
             batch_sender: sendmmsg::BatchSender::new(64),
             #[cfg(target_os = "linux")]
@@ -319,6 +325,12 @@ impl ReliableUdpRingBufferTransport {
     }
 
     pub fn send(&mut self, data: &[u8]) -> std::io::Result<u64> {
+        // Congestion control: check if we can send
+        if !self.congestion.can_send() {
+            METRICS.record_backpressure();
+            return Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Congestion window full"));
+        }
+
         let seq = self.next_send_seq;
         let mut header = ReliableUdpHeader::new(0, seq, MessageType::Data, data.len() as u16);
         header.calculate_checksum(data);
@@ -352,12 +364,14 @@ impl ReliableUdpRingBufferTransport {
                     slots[0].set_sequence(slot_seq);
                     slots[0].set_data(&buffer);
                     self.send_window.publish_batch(slot_seq, 1);
-                    // Keep messages for retransmission - only advance on ACK
 
                     self.socket.send_to(&buffer, self.remote_addr)?;
+                    self.congestion.on_send();
+                    METRICS.record_send(buffer.len() as u64);
                     self.next_send_seq = self.next_send_seq.wrapping_add(1);
                     Ok(seq)
                 } else {
+                    METRICS.record_backpressure();
                     Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
                 }
             });
@@ -367,12 +381,14 @@ impl ReliableUdpRingBufferTransport {
             slots[0].set_sequence(slot_seq);
             slots[0].set_data(packet);
             self.send_window.publish_batch(slot_seq, 1);
-            // Keep messages for retransmission - only advance on ACK
 
             self.socket.send_to(packet, self.remote_addr)?;
+            self.congestion.on_send();
+            METRICS.record_send(packet.len() as u64);
             self.next_send_seq = self.next_send_seq.wrapping_add(1);
             Ok(seq)
         } else {
+            METRICS.record_backpressure();
             Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
         }
     }
@@ -491,6 +507,7 @@ impl ReliableUdpRingBufferTransport {
         if let Some(slot) = slots.iter().find(|s| s.sequence() == lost_seq) {
             let pkt_data = slot.data();
             if !pkt_data.is_empty() {
+                METRICS.record_retransmit();
                 let _ = self.socket.send_to(pkt_data, self.remote_addr);
             }
         }
@@ -555,12 +572,15 @@ impl ReliableUdpRingBufferTransport {
                             if acked > self.acked_seq {
                                 #[cfg(feature = "debug")]
                                 eprintln!("[ACK-RECV] Received ACK for seq {}, advancing window", acked);
+                                // Congestion control: ACK received
+                                self.congestion.on_ack();
                                 self.acked_seq = acked;
-                                // Now safe to advance consumer - these messages are confirmed delivered
                                 self.send_window.advance_consumer(0, acked);
                             }
                         } else if header.msg_type == (MessageType::Nak as u8) {
-                            // Handle NAK in this loop too
+                            // Handle NAK - indicates loss
+                            self.congestion.on_loss();
+                            METRICS.record_retransmit();
                             let sequence = header.sequence;
                             self.retransmit(sequence);
                         }
@@ -670,6 +690,7 @@ impl ReliableUdpRingBufferTransport {
 
     /// Retransmit a batch of lost packets (on batch NAK)
     pub fn retransmit_batch(&mut self, start_seq: u64, end_seq: u64) {
+        self.congestion.on_loss(); // Loss event triggers congestion control
         let slots = self.send_window.peek_batch(0, self.window_size);
         for slot in slots.iter().filter(|s| {
             let seq = s.sequence();
@@ -677,9 +698,20 @@ impl ReliableUdpRingBufferTransport {
         }) {
             let pkt_data = slot.data();
             if !pkt_data.is_empty() {
+                METRICS.record_retransmit();
                 let _ = self.socket.send_to(pkt_data, self.remote_addr);
             }
         }
+    }
+
+    /// Get congestion window size
+    pub fn congestion_window(&self) -> u32 {
+        self.congestion.window_size()
+    }
+
+    /// Get packets in flight
+    pub fn in_flight(&self) -> u32 {
+        self.congestion.in_flight()
     }
 
     /// Zero-copy, callback-based delivery: process each message in-place with the provided closure.
@@ -813,6 +845,7 @@ impl ReliableUdpRingBufferTransport {
                     }
                 }
                 self.recv_window.deliver_in_order_with(|msg| {
+                    METRICS.record_receive(msg.len() as u64);
                     f(msg);
                 });
 

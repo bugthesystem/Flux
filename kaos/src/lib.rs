@@ -3,10 +3,12 @@
 pub mod disruptor;
 pub mod error;
 pub mod crc32;
+pub mod metrics;
 
 // Re-export main components
 pub use disruptor::{RingBuffer, MessageRingBuffer, RingBufferConfig, MessageSlot};
 pub use error::{Result, KaosError};
+pub use metrics::{Metrics, MetricsSnapshot, METRICS};
 
 #[cfg(test)]
 mod tests {
