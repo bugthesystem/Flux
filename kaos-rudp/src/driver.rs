@@ -6,8 +6,11 @@
 use std::io;
 use kaos_ipc::{Publisher, Subscriber};
 
+/// Default IPC path for app → driver messages
 const SEND_PATH: &str = "/tmp/kaos-send";
+/// Default IPC path for driver → app messages
 const RECV_PATH: &str = "/tmp/kaos-recv";
+/// IPC ring buffer size (64K slots, must be power of 2)
 const RING_SIZE: usize = 64 * 1024;
 
 /// Driver-backed transport (zero syscalls from app)

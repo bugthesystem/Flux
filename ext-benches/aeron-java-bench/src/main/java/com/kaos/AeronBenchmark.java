@@ -1,4 +1,4 @@
-package com.flux;
+package com.kaos;
 
 import io.aeron.*;
 import io.aeron.driver.*;
@@ -15,13 +15,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Aeron Benchmark - Comparing with Flux RUDP
+ * Aeron Benchmark - Comparing with Kaos RUDP
  * 
  * Tests both IPC (shared memory) and UDP throughput.
  */
 public class AeronBenchmark {
     
-    private static final int MESSAGE_LENGTH = 64;  // Match flux-rudp benchmark
+    private static final int MESSAGE_LENGTH = 64;  // Match kaos-rudp benchmark
     private static final int TEST_DURATION_SECS = 10;
     private static final int FRAGMENT_COUNT_LIMIT = 256;
     
@@ -47,7 +47,7 @@ public class AeronBenchmark {
         
         Thread.sleep(2000);  // Cooldown
         
-        // Run UDP benchmark (comparable to flux-rudp)
+        // Run UDP benchmark (comparable to kaos-rudp)
         System.out.println("\n═══════════════════════════════════════════");
         System.out.println("  TEST 2: UDP (localhost)");
         System.out.println("═══════════════════════════════════════════\n");

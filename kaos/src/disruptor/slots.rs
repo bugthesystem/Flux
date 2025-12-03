@@ -105,7 +105,9 @@ impl RingBufferEntry for Slot64 {
 // MessageSlot - 128-byte aligned with hardware CRC32
 // ============================================================================
 
+/// Max payload in MessageSlot (1KB, fits in single cache prefetch)
 const MAX_MESSAGE_DATA_SIZE: usize = 1024;
+// Note: align(128) used directly for cache-line alignment (128B on Apple Silicon, 64B on x86)
 
 /// Message type (only Data is actively used)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -183,12 +185,17 @@ impl MessageSlot {
         }
     }
 
+    /// Fallback checksum for non-ARM (FNV-1a inspired, fast software hash)
     #[cfg(not(target_arch = "aarch64"))]
     fn calculate_checksum_hardware(data: &[u8]) -> u32 {
+        // FNV-1a constants (well-distributed primes)
+        const FNV_SEED: u32 = 0x9e3779b1;    // Golden ratio derived
+        const FNV_PRIME: u32 = 0x85ebca77;   // FNV prime for 32-bit
+        
         if data.is_empty() { return 0; }
-        let mut hash = 0x9e3779b1u32;
+        let mut hash = FNV_SEED;
         for &byte in data {
-            hash = hash.wrapping_mul(0x85ebca77).wrapping_add(byte as u32);
+            hash = hash.wrapping_mul(FNV_PRIME).wrapping_add(byte as u32);
             hash ^= hash >> 13;
         }
         hash

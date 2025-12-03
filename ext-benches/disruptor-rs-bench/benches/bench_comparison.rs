@@ -1,4 +1,4 @@
-//! flux vs disruptor-rs benchmark
+//! kaos vs disruptor-rs benchmark
 //!
 //! Side-by-side comparison with identical parameters.
 //! Run: cargo bench --bench bench_comparison
@@ -14,7 +14,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
-// flux
+// kaos
 use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot8};
 
 // disruptor-rs
@@ -25,11 +25,11 @@ const BATCH_SIZE: usize = 8192;
 const TOTAL_EVENTS: u64 = 10_000_000;
 
 // =============================================================================
-// FLUX BENCHMARKS
+// KAOS BENCHMARKS
 // =============================================================================
 
-/// flux batch API (highest throughput)
-fn flux_batch(events: u64) -> u64 {
+/// kaos batch API (highest throughput)
+fn kaos_batch(events: u64) -> u64 {
     let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
 
@@ -72,8 +72,8 @@ fn flux_batch(events: u64) -> u64 {
     events
 }
 
-/// flux per-event API (fair comparison with disruptor-rs)
-fn flux_per_event(events: u64) -> u64 {
+/// kaos per-event API (fair comparison with disruptor-rs)
+fn kaos_per_event(events: u64) -> u64 {
     let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
 
@@ -176,12 +176,12 @@ fn benchmark_spsc_comparison(c: &mut Criterion) {
     group.throughput(Throughput::Elements(TOTAL_EVENTS));
     group.sample_size(20);
 
-    group.bench_function(BenchmarkId::new("flux", "batch"), |b| {
-        b.iter(|| flux_batch(TOTAL_EVENTS))
+    group.bench_function(BenchmarkId::new("kaos", "batch"), |b| {
+        b.iter(|| kaos_batch(TOTAL_EVENTS))
     });
 
-    group.bench_function(BenchmarkId::new("flux", "per-event"), |b| {
-        b.iter(|| flux_per_event(TOTAL_EVENTS))
+    group.bench_function(BenchmarkId::new("kaos", "per-event"), |b| {
+        b.iter(|| kaos_per_event(TOTAL_EVENTS))
     });
 
     group.bench_function(BenchmarkId::new("disruptor-rs", "per-event"), |b| {

@@ -13,14 +13,23 @@ pub struct XdpConfig {
     pub batch_size: usize,
 }
 
+/// Default XDP frame size (4KB = page size, good for most NICs)
+const DEFAULT_FRAME_SIZE: u32 = 4096;
+
+/// Default frame count (4K frames = 16MB UMEM)
+const DEFAULT_FRAME_COUNT: u32 = 4096;
+
+/// Default batch size for TX/RX operations
+const DEFAULT_BATCH_SIZE: usize = 64;
+
 impl Default for XdpConfig {
     fn default() -> Self {
         Self {
             interface: "lo".to_string(),
             queue_id: 0,
-            frame_size: 4096,
-            frame_count: 4096,
-            batch_size: 64,
+            frame_size: DEFAULT_FRAME_SIZE,
+            frame_count: DEFAULT_FRAME_COUNT,
+            batch_size: DEFAULT_BATCH_SIZE,
         }
     }
 }

@@ -19,13 +19,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Aeron Benchmark - Comparing with Flux RUDP
+ * Aeron Benchmark - Comparing with Kaos RUDP
  * 
  * Run with: jbang AeronBench.java
  */
 public class AeronBench {
     
-    private static final int MESSAGE_LENGTH = 64;  // Match flux-rudp benchmark
+    private static final int MESSAGE_LENGTH = 64;  // Match kaos-rudp benchmark
     private static final int TEST_DURATION_SECS = 10;
     private static final int FRAGMENT_COUNT_LIMIT = 256;
     
@@ -51,7 +51,7 @@ public class AeronBench {
         
         Thread.sleep(2000);  // Cooldown
         
-        // Run UDP benchmark (comparable to flux-rudp)
+        // Run UDP benchmark (comparable to kaos-rudp)
         System.out.println("\n═══════════════════════════════════════════");
         System.out.println("  TEST 2: UDP (localhost)");
         System.out.println("═══════════════════════════════════════════\n");
@@ -62,7 +62,7 @@ public class AeronBench {
         System.out.println("  COMPARISON (macOS localhost):");
         System.out.println("  ─────────────────────────────────────────");
         System.out.println("  Aeron IPC:   ~22 M/s (shared memory)");
-        System.out.println("  flux-rudp:   ~2.85 M/s (UDP) ← 56% faster!");
+        System.out.println("  kaos-rudp:   ~2.85 M/s (UDP) ← 56% faster!");
         System.out.println("  Aeron UDP:   ~1.8 M/s (UDP)");
         System.out.println("═══════════════════════════════════════════\n");
     }

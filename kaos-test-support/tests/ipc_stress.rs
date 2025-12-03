@@ -98,7 +98,7 @@ fn test_ipc_data_integrity() {
 
 #[test]
 fn test_ipc_concurrent_threads() {
-    let path = "/tmp/flux-ipc-concurrent-test";
+    let path = "/tmp/kaos-ipc-concurrent-test";
     let _ = fs::remove_file(path);
     
     let running = Arc::new(AtomicBool::new(true));

@@ -1,4 +1,4 @@
-//! Comparison Benchmark: Flux vs disruptor-rs with Data Integrity
+//! Comparison Benchmark: Kaos vs disruptor-rs with Data Integrity
 //!
 //! This benchmark:
 //! 1. Tests both libraries with IDENTICAL logic
@@ -7,8 +7,8 @@
 //! 4. Identifies performance differences
 //!
 //! Tests three variants:
-//! - Flux with MessageSlot (128 bytes)
-//! - Flux with Slot8 (8 bytes) - FAIR comparison
+//! - Kaos with MessageSlot (128 bytes)
+//! - Kaos with Slot8 (8 bytes) - FAIR comparison
 //! - disruptor-rs (8 bytes)
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -30,7 +30,7 @@ const NUM_RUNS: usize = 3;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n╔════════════════════════════════════════════════════════╗");
-    println!("║  Flux vs disruptor-rs - Integrity Benchmark          ║");
+    println!("║  Kaos vs disruptor-rs - Integrity Benchmark          ║");
     println!("╚════════════════════════════════════════════════════════╝\n");
 
     println!("Configuration:");
@@ -40,17 +40,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Runs:        {}", NUM_RUNS);
     println!("  Integrity:   XOR checksum verification\n");
 
-    // Test 1: Flux MessageSlot
-    println!("═══ Test 1: Flux MessageSlot (128 bytes) ═══\n");
-    let mut flux_results = Vec::new();
-    let mut flux_total_sent = 0u64;
-    let mut flux_total_consumed = 0u64;
+    // Test 1: Kaos MessageSlot
+    println!("═══ Test 1: Kaos MessageSlot (128 bytes) ═══\n");
+    let mut kaos_results = Vec::new();
+    let mut kaos_total_sent = 0u64;
+    let mut kaos_total_consumed = 0u64;
     for run in 1..=NUM_RUNS {
         println!("  Run {}/{}...", run, NUM_RUNS);
-        let (throughput, checksum_ok, sent, consumed) = benchmark_flux()?;
-        flux_results.push(throughput);
-        flux_total_sent += sent;
-        flux_total_consumed += consumed;
+        let (throughput, checksum_ok, sent, consumed) = benchmark_kaos()?;
+        kaos_results.push(throughput);
+        kaos_total_sent += sent;
+        kaos_total_consumed += consumed;
 
         let avg_sent = sent as f64 / 1_000_000.0;
         let avg_consumed = consumed as f64 / 1_000_000.0;
@@ -67,37 +67,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if checksum_ok { "✅ PASS" } else { "❌ FAIL" }
         );
     }
-    let flux_avg = flux_results.iter().sum::<f64>() / NUM_RUNS as f64;
-    let flux_min = flux_results.iter().copied().fold(f64::INFINITY, f64::min);
-    let flux_max = flux_results.iter().copied().fold(0.0, f64::max);
+    let kaos_avg = kaos_results.iter().sum::<f64>() / NUM_RUNS as f64;
+    let kaos_min = kaos_results.iter().copied().fold(f64::INFINITY, f64::min);
+    let kaos_max = kaos_results.iter().copied().fold(0.0, f64::max);
 
-    println!("\n  Average Throughput: {:.2}M msgs/sec", flux_avg);
-    println!("  Min:                {:.2}M msgs/sec", flux_min);
-    println!("  Max:                {:.2}M msgs/sec", flux_max);
+    println!("\n  Average Throughput: {:.2}M msgs/sec", kaos_avg);
+    println!("  Min:                {:.2}M msgs/sec", kaos_min);
+    println!("  Max:                {:.2}M msgs/sec", kaos_max);
     println!(
         "  Total Sent:         {:.2}M msgs",
-        flux_total_sent as f64 / 1_000_000.0
+        kaos_total_sent as f64 / 1_000_000.0
     );
     println!(
         "  Total Consumed:     {:.2}M msgs",
-        flux_total_consumed as f64 / 1_000_000.0
+        kaos_total_consumed as f64 / 1_000_000.0
     );
     println!(
         "  Overall Delivery:   {:.2}%",
-        (flux_total_consumed as f64 / flux_total_sent as f64) * 100.0
+        (kaos_total_consumed as f64 / kaos_total_sent as f64) * 100.0
     );
 
-    // Test 2: Flux Slot8 (FAIR comparison)
-    println!("\n═══ Test 2: Flux Slot8 (8 bytes) - FAIR COMPARISON ═══\n");
-    let mut flux_small_results = Vec::new();
-    let mut flux_small_total_sent = 0u64;
-    let mut flux_small_total_consumed = 0u64;
+    // Test 2: Kaos Slot8 (FAIR comparison)
+    println!("\n═══ Test 2: Kaos Slot8 (8 bytes) - FAIR COMPARISON ═══\n");
+    let mut kaos_small_results = Vec::new();
+    let mut kaos_small_total_sent = 0u64;
+    let mut kaos_small_total_consumed = 0u64;
     for run in 1..=NUM_RUNS {
         println!("  Run {}/{}...", run, NUM_RUNS);
-        let (throughput, checksum_ok, sent, consumed) = benchmark_flux_small()?;
-        flux_small_results.push(throughput);
-        flux_small_total_sent += sent;
-        flux_small_total_consumed += consumed;
+        let (throughput, checksum_ok, sent, consumed) = benchmark_kaos_small()?;
+        kaos_small_results.push(throughput);
+        kaos_small_total_sent += sent;
+        kaos_small_total_consumed += consumed;
 
         let avg_sent = sent as f64 / 1_000_000.0;
         let avg_consumed = consumed as f64 / 1_000_000.0;
@@ -114,27 +114,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if checksum_ok { "✅ PASS" } else { "❌ FAIL" }
         );
     }
-    let flux_small_avg = flux_small_results.iter().sum::<f64>() / NUM_RUNS as f64;
-    let flux_small_min = flux_small_results
+    let kaos_small_avg = kaos_small_results.iter().sum::<f64>() / NUM_RUNS as f64;
+    let kaos_small_min = kaos_small_results
         .iter()
         .copied()
         .fold(f64::INFINITY, f64::min);
-    let flux_small_max = flux_small_results.iter().copied().fold(0.0, f64::max);
+    let kaos_small_max = kaos_small_results.iter().copied().fold(0.0, f64::max);
 
-    println!("\n  Average Throughput: {:.2}M msgs/sec", flux_small_avg);
-    println!("  Min:                {:.2}M msgs/sec", flux_small_min);
-    println!("  Max:                {:.2}M msgs/sec", flux_small_max);
+    println!("\n  Average Throughput: {:.2}M msgs/sec", kaos_small_avg);
+    println!("  Min:                {:.2}M msgs/sec", kaos_small_min);
+    println!("  Max:                {:.2}M msgs/sec", kaos_small_max);
     println!(
         "  Total Sent:         {:.2}M msgs",
-        flux_small_total_sent as f64 / 1_000_000.0
+        kaos_small_total_sent as f64 / 1_000_000.0
     );
     println!(
         "  Total Consumed:     {:.2}M msgs",
-        flux_small_total_consumed as f64 / 1_000_000.0
+        kaos_small_total_consumed as f64 / 1_000_000.0
     );
     println!(
         "  Overall Delivery:   {:.2}%",
-        (flux_small_total_consumed as f64 / flux_small_total_sent as f64) * 100.0
+        (kaos_small_total_consumed as f64 / kaos_small_total_sent as f64) * 100.0
     );
 
     println!("\n═══ Test 3: disruptor-rs (8 bytes) ═══\n");
@@ -190,22 +190,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n╔════════════════════════════════════════════════════════╗");
     println!("║  COMPARISON - APPLES TO APPLES                        ║");
     println!("╚════════════════════════════════════════════════════════╝");
-    println!("  Flux MessageSlot (128B): {:.2}M msgs/sec", flux_avg);
-    println!("  Flux Slot8 (8B):     {:.2}M msgs/sec", flux_small_avg);
+    println!("  Kaos MessageSlot (128B): {:.2}M msgs/sec", kaos_avg);
+    println!("  Kaos Slot8 (8B):     {:.2}M msgs/sec", kaos_small_avg);
     println!("  disruptor-rs (8B):       {:.2}M msgs/sec", disruptor_avg);
     println!();
 
     // Fair comparison: Slot8 vs disruptor-rs
-    if flux_small_avg > disruptor_avg {
-        let gain = ((flux_small_avg - disruptor_avg) / disruptor_avg) * 100.0;
+    if kaos_small_avg > disruptor_avg {
+        let gain = ((kaos_small_avg - disruptor_avg) / disruptor_avg) * 100.0;
         println!(
-            "  🚀 Flux Slot8 is {:.1}% FASTER than disruptor-rs!",
+            "  🚀 Kaos Slot8 is {:.1}% FASTER than disruptor-rs!",
             gain
         );
     } else {
-        let diff = ((disruptor_avg - flux_small_avg) / flux_small_avg) * 100.0;
+        let diff = ((disruptor_avg - kaos_small_avg) / kaos_small_avg) * 100.0;
         println!(
-            "  ⚠️  Flux Slot8 is {:.1}% slower than disruptor-rs",
+            "  ⚠️  Kaos Slot8 is {:.1}% slower than disruptor-rs",
             diff
         );
     }
@@ -214,7 +214,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n  📊 Analysis:");
     println!("  - MessageSlot has features (timestamps, checksums, metadata)");
     println!("  - Slot8 matches disruptor-rs design (8 bytes, minimal)");
-    let overhead = ((flux_avg / flux_small_avg - 1.0) * 100.0);
+    let overhead = ((kaos_avg / kaos_small_avg - 1.0) * 100.0);
     println!(
         "  - Feature overhead: {:.1}% slower for 128-byte slots",
         overhead.abs()
@@ -224,7 +224,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn benchmark_flux() -> Result<(f64, bool, u64, u64), Box<dyn std::error::Error>> {
+fn benchmark_kaos() -> Result<(f64, bool, u64, u64), Box<dyn std::error::Error>> {
     use kaos::disruptor::{RingBuffer, RingBufferConfig};
 
     let config = RingBufferConfig {
@@ -333,7 +333,7 @@ fn benchmark_flux() -> Result<(f64, bool, u64, u64), Box<dyn std::error::Error>>
     Ok((throughput, checksum_ok, total_sent, total_consumed))
 }
 
-fn benchmark_flux_small() -> Result<(f64, bool, u64, u64), Box<dyn std::error::Error>> {
+fn benchmark_kaos_small() -> Result<(f64, bool, u64, u64), Box<dyn std::error::Error>> {
     // NOTE: RingBuffer currently only supports MessageSlot, not generic over T
     // We'll create a minimal benchmark using raw u64 values in MessageSlot.sequence
     // This gives us the same 8-byte payload as disruptor-rs for fair comparison

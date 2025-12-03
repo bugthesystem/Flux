@@ -85,7 +85,7 @@ cargo bench -p kaos --bench bench_trace -- "100M"
 cd ext-benches/disruptor-rs-bench && cargo bench --bench bench_trace_events
 cd ext-benches/disruptor-java-bench && mvn compile -q && \
   java -cp "target/classes:$(mvn dependency:build-classpath -q -Dmdep.outputFile=/dev/stdout)" \
-  com.flux.TraceEventsBenchmark
+  com.kaos.TraceEventsBenchmark
 ```
 
 ## Quick Start
@@ -133,12 +133,19 @@ ring.update_consumer(9);
 # Unit tests
 cargo test --workspace
 
-# Concurrency verification (Loom)
+# Loom concurrency verification (exhaustive state exploration)
 RUSTFLAGS="--cfg loom" cargo test -p kaos --test loom_ring_buffer --release
 
 # Memory analysis (macOS)
 leaks --atExit -- ./target/release/examples/spsc_basic
+
+# Memory analysis (Linux)
+cargo valgrind run --example spsc_basic -p kaos --release
 ```
+
+**Loom** tests verify lock-free correctness by exploring all possible thread interleavings. See [kaos/tests/loom_ring_buffer.rs](./kaos/tests/loom_ring_buffer.rs).
+
+**Profiling** guide with flamegraphs, valgrind, leaks and Instruments: [kaos/docs/PROFILING.md](./kaos/docs/PROFILING.md)
 
 ## Platform Support
 
@@ -151,7 +158,7 @@ leaks --atExit -- ./target/release/examples/spsc_basic
 ## Design Principles
 
 - **Lock-free** — Atomic sequences, no mutex contention
-- **Zero-copy reads** — Direct slice access to buffer memory  
+- **Zero-copy reads** — Consumers get direct slice access (writes copy to buffer)  
 - **Cache-aligned** — 128-byte padding prevents false sharing
 - **Batch operations** — Amortize synchronization overhead
 

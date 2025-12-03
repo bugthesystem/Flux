@@ -17,7 +17,10 @@ mod uring;
 #[cfg(all(target_os = "linux", feature = "xdp"))]
 mod xdp;
 
+/// IPC ring buffer size (64K slots, must be power of 2)
 const RING_SIZE: usize = 64 * 1024;
+
+/// Batch size for sendmmsg/recvmmsg (64 = good syscall amortization)
 #[cfg(target_os = "linux")]
 const BATCH_SIZE: usize = 64;
 

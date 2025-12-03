@@ -1,4 +1,4 @@
-package com.flux;
+package com.kaos;
 
 import com.lmax.disruptor.*;
 import com.lmax.disruptor.dsl.Disruptor;
@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * LMAX Disruptor - Trace Events Benchmark
  * 
- * Same test as Flux Rust benchmark:
+ * Same test as Kaos Rust benchmark:
  * - 5 event types: Click, Scroll, PageView, Purchase, Login
  * - 1 billion events per type = 5 billion total
  * - Verify exact counts

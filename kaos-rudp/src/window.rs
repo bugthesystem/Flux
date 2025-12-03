@@ -3,6 +3,7 @@
 //! This module provides a `BitmapWindow` for managing the receive window,
 //! handling out-of-order packet arrival efficiently using a bitmap-based approach.
 
+/// Max packet size (2KB > typical MTU 1500, with headroom for headers)
 const MAX_PACKET_SIZE: usize = 2048;
 
 #[repr(C, align(128))]

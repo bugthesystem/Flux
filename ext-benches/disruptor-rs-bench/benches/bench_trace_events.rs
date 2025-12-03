@@ -1,4 +1,4 @@
-//! Trace Events Comparison: Flux vs disruptor-rs
+//! Trace Events Comparison: Kaos vs disruptor-rs
 //!
 //! Real-world benchmark simulating mobile user interaction tracking.
 //! Same workload for both libraries for fair comparison.
@@ -20,8 +20,8 @@ const TOTAL_EVENTS: u64 = EVENTS_PER_TYPE * 5;
 const RING_SIZE: usize = 1024 * 1024;
 const BATCH_SIZE: usize = 8192;
 
-/// Flux implementation - using batch API
-fn run_flux_trace_events() -> (u64, bool) {
+/// Kaos implementation - using batch API
+fn run_kaos_trace_events() -> (u64, bool) {
     use kaos::disruptor::{RingBuffer, Slot8};
 
     let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
@@ -184,10 +184,10 @@ fn benchmark_trace_events(c: &mut Criterion) {
     group.throughput(Throughput::Elements(TOTAL_EVENTS));
     group.sample_size(10);
 
-    group.bench_function("flux", |b| {
+    group.bench_function("kaos", |b| {
         b.iter(|| {
-            let (total, verified) = run_flux_trace_events();
-            assert!(verified, "Flux verification failed! Got {} events", total);
+            let (total, verified) = run_kaos_trace_events();
+            assert!(verified, "Kaos verification failed! Got {} events", total);
             total
         })
     });

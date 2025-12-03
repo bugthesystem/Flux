@@ -42,11 +42,23 @@ use kaos::disruptor::{ MessageRingBuffer, RingBufferConfig, RingBufferEntry };
 use kaos::crc32;
 use bytemuck::{ Pod, Zeroable };
 
+// Buffer sizes for UDP I/O
+/// Max send buffer (64KB = max UDP payload with some headroom)
+const SEND_BUFFER_SIZE: usize = 65536;
+/// Large message assembly buffer (4KB typical MTU-friendly size)
+const LARGE_MSG_SIZE: usize = 4096;
+/// Per-packet receive buffer (2KB > typical MTU 1500)
+const RECV_PACKET_SIZE: usize = 2048;
+/// Batch size for recvmmsg (64 packets per syscall)
+const RECV_BATCH_SIZE: usize = 64;
+/// Socket buffer size (8MB for high throughput)
+const SOCKET_BUFFER_SIZE: i32 = 8 * 1024 * 1024;
+
 thread_local! {
-    static SEND_BUFFER: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(65536));
-    static LARGE_MSG_BUFFER: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(4096));
-    static RECV_BUFFERS: RefCell<Vec<[u8; 2048]>> = RefCell::new(vec![[0u8; 2048]; 64]);
-    static RECV_LENS: RefCell<Vec<usize>> = RefCell::new(vec![0usize; 64]);
+    static SEND_BUFFER: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(SEND_BUFFER_SIZE));
+    static LARGE_MSG_BUFFER: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(LARGE_MSG_SIZE));
+    static RECV_BUFFERS: RefCell<Vec<[u8; RECV_PACKET_SIZE]>> = RefCell::new(vec![[0u8; RECV_PACKET_SIZE]; RECV_BATCH_SIZE]);
+    static RECV_LENS: RefCell<Vec<usize>> = RefCell::new(vec![0usize; RECV_BATCH_SIZE]);
 }
 
 mod window;
@@ -254,7 +266,7 @@ impl ReliableUdpRingBufferTransport {
         {
             use std::os::unix::io::AsRawFd;
             let fd = socket.as_raw_fd();
-            let buffer_size = 8 * 1024 * 1024i32;
+            let buffer_size = SOCKET_BUFFER_SIZE;
             unsafe {
                 libc::setsockopt(
                     fd,

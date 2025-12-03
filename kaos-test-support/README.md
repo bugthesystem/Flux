@@ -1,6 +1,6 @@
 # kaos-test-support
 
-Testing infrastructure for the flux ecosystem, inspired by [Aeron's](https://github.com/real-logic/aeron) comprehensive test suite.
+Testing infrastructure for the kaos ecosystem, inspired by [Aeron's](https://github.com/real-logic/aeron) comprehensive test suite.
 
 ## Components
 
@@ -9,7 +9,7 @@ Testing infrastructure for the flux ecosystem, inspired by [Aeron's](https://git
 Simulates network packet loss for testing RUDP reliability.
 
 ```rust
-use flux_test_support::loss::{LossGenerator, LossPattern, DropDecision};
+use kaos_test_support::loss::{LossGenerator, LossPattern, DropDecision};
 
 // Drop every 100th packet
 let mut loss = LossGenerator::new(LossPattern::Periodic { every_n: 100 });
@@ -30,7 +30,7 @@ if loss.should_drop(seq) == DropDecision::Drop {
 Introduces random failures for robustness testing.
 
 ```rust
-use flux_test_support::chaos::{ChaosMonkey, ChaosConfig};
+use kaos_test_support::chaos::{ChaosMonkey, ChaosConfig};
 
 let config = ChaosConfig {
     delay_probability: 0.1,
@@ -48,7 +48,7 @@ chaos.maybe_corrupt(&mut data);
 Long-duration test harness with metrics.
 
 ```rust
-use flux_test_support::stress::{StressRunner, StressConfig};
+use kaos_test_support::stress::{StressRunner, StressConfig};
 use std::time::Duration;
 
 let config = StressConfig {
@@ -68,7 +68,7 @@ runner.run(|| {
 Validates message ordering and detects gaps.
 
 ```rust
-use flux_test_support::verify::SequenceChecker;
+use kaos_test_support::verify::SequenceChecker;
 
 let mut checker = SequenceChecker::new();
 checker.check(0);  // ok

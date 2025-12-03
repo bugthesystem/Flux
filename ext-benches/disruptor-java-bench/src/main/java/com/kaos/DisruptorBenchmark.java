@@ -1,4 +1,4 @@
-package com.flux;
+package com.kaos;
 
 import com.lmax.disruptor.*;
 import com.lmax.disruptor.dsl.Disruptor;
@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * LMAX Disruptor Benchmark - Matching Flux Rust Benchmark
+ * LMAX Disruptor Benchmark - Matching Kaos Rust Benchmark
  */
 public class DisruptorBenchmark {
     

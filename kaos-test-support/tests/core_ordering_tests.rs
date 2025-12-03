@@ -1,4 +1,4 @@
-//! Memory Ordering Tests for flux Core Ring Buffer
+//! Memory Ordering Tests for Kaos Core Ring Buffer
 //!
 //! These tests verify that the ring buffer correctly handles
 //! concurrent access with proper memory ordering.

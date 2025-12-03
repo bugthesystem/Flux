@@ -1,10 +1,10 @@
 # External Benchmarks
 
-Comparison benchmarks against other libraries. These are separate from the main workspace to avoid adding dependencies to Flux.
+Comparison benchmarks against other libraries. These are separate from the main workspace to avoid adding dependencies to Kaos.
 
 ## disruptor-rs-bench
 
-Compares Flux against [disruptor-rs](https://crates.io/crates/disruptor).
+Compares Kaos against [disruptor-rs](https://crates.io/crates/disruptor).
 
 ```bash
 cd disruptor-rs-bench

@@ -1,17 +1,23 @@
 //! Completion tracking for multi-consumer ring buffers.
 
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{ AtomicU64, AtomicBool, Ordering };
 use std::marker::PhantomData;
 use super::RingBufferEntry;
 
+/// Maximum slots for completion tracking (64K = 2^16, allows efficient masking)
 const MAX_SLOTS: usize = 65536;
+
+/// Bitmask for slot index (MAX_SLOTS - 1 for fast modulo via AND)
 const SLOT_MASK: usize = MAX_SLOTS - 1;
 
+/// Cache-line aligned atomic (128 bytes for Apple Silicon, 64 bytes on x86)
 #[repr(align(128))]
 struct PaddedAtomicU64(AtomicU64);
 
 impl PaddedAtomicU64 {
-    fn new(v: u64) -> Self { Self(AtomicU64::new(v)) }
+    fn new(v: u64) -> Self {
+        Self(AtomicU64::new(v))
+    }
 }
 
 pub struct CompletionTracker {
@@ -24,17 +30,34 @@ impl CompletionTracker {
     pub fn new() -> Self {
         let slot_completed: Box<[AtomicBool; MAX_SLOTS]> = {
             let mut v = Vec::with_capacity(MAX_SLOTS);
-            for _ in 0..MAX_SLOTS { v.push(AtomicBool::new(false)); }
+            for _ in 0..MAX_SLOTS {
+                v.push(AtomicBool::new(false));
+            }
             v.into_boxed_slice().try_into().unwrap()
         };
-        Self { claim_cursor: PaddedAtomicU64::new(0), completed_cursor: PaddedAtomicU64::new(0), slot_completed }
+        Self {
+            claim_cursor: PaddedAtomicU64::new(0),
+            completed_cursor: PaddedAtomicU64::new(0),
+            slot_completed,
+        }
     }
 
     pub fn try_claim(&self, producer_cursor: u64) -> Option<u64> {
         loop {
             let current = self.claim_cursor.0.load(Ordering::Relaxed);
-            if current >= producer_cursor { return None; }
-            if self.claim_cursor.0.compare_exchange_weak(current, current + 1, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+            if current >= producer_cursor {
+                return None;
+            }
+            if
+                self.claim_cursor.0
+                    .compare_exchange_weak(
+                        current,
+                        current + 1,
+                        Ordering::Relaxed,
+                        Ordering::Relaxed
+                    )
+                    .is_ok()
+            {
                 return Some(current);
             }
         }
@@ -44,10 +67,16 @@ impl CompletionTracker {
         loop {
             let current = self.claim_cursor.0.load(Ordering::Relaxed);
             let available = producer_cursor.saturating_sub(current) as usize;
-            if available == 0 { return None; }
+            if available == 0 {
+                return None;
+            }
             let count = requested.min(available);
             let next = current + (count as u64);
-            if self.claim_cursor.0.compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+            if
+                self.claim_cursor.0
+                    .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+                    .is_ok()
+            {
                 return Some((current, count));
             }
         }
@@ -71,16 +100,31 @@ impl CompletionTracker {
         loop {
             let completed = self.completed_cursor.0.load(Ordering::Relaxed);
             let claimed = self.claim_cursor.0.load(Ordering::Relaxed);
-            if completed >= claimed { return; }
+            if completed >= claimed {
+                return;
+            }
             let idx = (completed as usize) & SLOT_MASK;
-            if !self.slot_completed[idx].load(Ordering::Acquire) { return; }
-            if self.completed_cursor.0.compare_exchange_weak(completed, completed + 1, Ordering::Release, Ordering::Relaxed).is_ok() {
+            if !self.slot_completed[idx].load(Ordering::Acquire) {
+                return;
+            }
+            if
+                self.completed_cursor.0
+                    .compare_exchange_weak(
+                        completed,
+                        completed + 1,
+                        Ordering::Release,
+                        Ordering::Relaxed
+                    )
+                    .is_ok()
+            {
                 self.slot_completed[idx].store(false, Ordering::Relaxed);
             }
         }
     }
 
-    pub fn completed_cursor(&self) -> u64 { self.completed_cursor.0.load(Ordering::Acquire) }
+    pub fn completed_cursor(&self) -> u64 {
+        self.completed_cursor.0.load(Ordering::Acquire)
+    }
 
     pub fn set_completed_cursor(&self, cursor: u64) {
         self.completed_cursor.0.store(cursor, Ordering::Release);
@@ -101,12 +145,18 @@ pub struct ReadGuard<'a, T: RingBufferEntry, R: ReadableRing<T>> {
 }
 
 impl<'a, T: RingBufferEntry, R: ReadableRing<T>> ReadGuard<'a, T, R> {
-    pub fn new(ring: &'a R, sequence: u64) -> Self { Self { ring, sequence, _marker: PhantomData } }
-    pub fn get(&self) -> &T { self.ring.read_slot_ref(self.sequence) }
+    pub fn new(ring: &'a R, sequence: u64) -> Self {
+        Self { ring, sequence, _marker: PhantomData }
+    }
+    pub fn get(&self) -> &T {
+        self.ring.read_slot_ref(self.sequence)
+    }
 }
 
 impl<'a, T: RingBufferEntry, R: ReadableRing<T>> Drop for ReadGuard<'a, T, R> {
-    fn drop(&mut self) { self.ring.complete_read(self.sequence); }
+    fn drop(&mut self) {
+        self.ring.complete_read(self.sequence);
+    }
 }
 
 pub struct BatchReadGuard<'a, T: RingBufferEntry, R: ReadableRing<T>> {
@@ -117,13 +167,21 @@ pub struct BatchReadGuard<'a, T: RingBufferEntry, R: ReadableRing<T>> {
 }
 
 impl<'a, T: RingBufferEntry, R: ReadableRing<T>> BatchReadGuard<'a, T, R> {
-    pub fn new(ring: &'a R, start: u64, count: usize) -> Self { Self { ring, start_sequence: start, count, _marker: PhantomData } }
-    pub fn count(&self) -> usize { self.count }
-    pub fn iter(&self) -> impl Iterator<Item = &T> { (0..self.count).map(move |i| self.ring.read_slot_ref(self.start_sequence + (i as u64))) }
+    pub fn new(ring: &'a R, start: u64, count: usize) -> Self {
+        Self { ring, start_sequence: start, count, _marker: PhantomData }
+    }
+    pub fn count(&self) -> usize {
+        self.count
+    }
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        (0..self.count).map(move |i| self.ring.read_slot_ref(self.start_sequence + (i as u64)))
+    }
 }
 
 impl<'a, T: RingBufferEntry, R: ReadableRing<T>> Drop for BatchReadGuard<'a, T, R> {
-    fn drop(&mut self) { self.ring.complete_read_batch(self.start_sequence, self.count); }
+    fn drop(&mut self) {
+        self.ring.complete_read_batch(self.start_sequence, self.count);
+    }
 }
 
 #[cfg(test)]
