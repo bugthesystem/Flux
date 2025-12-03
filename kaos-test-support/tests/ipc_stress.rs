@@ -1,8 +1,5 @@
 //! IPC Stress Tests
-//!
-//! Tests kaos-ipc under stress conditions with timeouts.
-
-use kaos_ipc::{Publisher, Subscriber, Slot8};
+use kaos_ipc::{Publisher, Subscriber};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -15,292 +12,172 @@ fn test_path(name: &str) -> String {
     format!("/tmp/kaos-ipc-{}-{}", name, std::process::id())
 }
 
-fn cleanup(path: &str) {
-    let _ = fs::remove_file(path);
-}
+fn cleanup(path: &str) { let _ = fs::remove_file(path); }
 
-/// Basic stress test: fast producer, fast consumer
 #[test]
 fn test_ipc_stress_basic() {
     let path = test_path("basic");
     cleanup(&path);
     
-    let mut publisher = Publisher::<Slot8>::new(&path, 64 * 1024).unwrap();
-    let mut subscriber = Subscriber::<Slot8>::new(&path).unwrap();
+    let mut pub_ = Publisher::create(&path, 64 * 1024).unwrap();
+    let mut sub = Subscriber::open(&path).unwrap();
     
     let count = 100_000u64;
-    let mut sent = 0u64;
-    let mut received = 0u64;
-    let mut errors = 0u64;
-    
+    let (mut sent, mut received, mut errors) = (0u64, 0u64, 0u64);
     let start = Instant::now();
     
     while received < count && start.elapsed() < TEST_TIMEOUT {
-        // Send batch (use saturating_sub to avoid overflow)
         while sent < count && sent.saturating_sub(received) < 60_000 {
-            if publisher.send(&sent.to_le_bytes()).is_ok() {
-                sent += 1;
-            } else {
-                break;
-            }
+            if pub_.send(sent).is_ok() { sent += 1; } else { break; }
         }
-        
-        // Receive batch
-        received += subscriber.receive(|slot| {
-            if slot.value >= count {
-                errors += 1;
-            }
-        }) as u64;
+        sub.receive(|val| {
+            if val >= count { errors += 1; }
+            received += 1;
+        });
     }
     
-    let duration = start.elapsed();
-    
-    println!("\n=== IPC Stress Test (Basic) ===");
-    println!("Messages: {}/{}", received, count);
-    println!("Duration: {:.2}s", duration.as_secs_f64());
-    println!("Rate: {:.2} M/s", received as f64 / duration.as_secs_f64() / 1_000_000.0);
-    println!("Errors: {}", errors);
-    
     assert_eq!(errors, 0);
-    assert_eq!(received, count, "Timed out before completion");
-    
+    assert_eq!(received, count, "Timed out");
     cleanup(&path);
 }
 
-/// Test with slow consumer (backpressure)
 #[test]
 fn test_ipc_slow_consumer() {
     let path = test_path("slow");
     cleanup(&path);
     
-    // Very small ring to force backpressure
-    let mut publisher = Publisher::<Slot8>::new(&path, 64).unwrap();
-    let mut subscriber = Subscriber::<Slot8>::new(&path).unwrap();
+    let mut pub_ = Publisher::create(&path, 64).unwrap();
+    let mut sub = Subscriber::open(&path).unwrap();
     
     let count = 1_000u64;
-    let mut sent = 0u64;
-    let mut received = 0u64;
-    let mut backpressure_events = 0u64;
-    
+    let (mut sent, mut received, mut backpressure) = (0u64, 0u64, 0u64);
     let start = Instant::now();
     
     while received < count && start.elapsed() < TEST_TIMEOUT {
-        // Try to send burst (will hit backpressure with small ring)
         for _ in 0..100 {
             if sent < count {
-                match publisher.send(&sent.to_le_bytes()) {
-                    Ok(_) => sent += 1,
-                    Err(_) => {
-                        backpressure_events += 1;
-                        break;
-                    }
-                }
+                if pub_.send(sent).is_ok() { sent += 1; }
+                else { backpressure += 1; break; }
             }
         }
-        
-        // Consume slowly
-        received += subscriber.receive(|_| {}) as u64;
+        sub.receive(|_| received += 1);
     }
     
-    let duration = start.elapsed();
-    
-    println!("\n=== IPC Slow Consumer Test ===");
-    println!("Sent/Received: {}/{}", sent, received);
-    println!("Backpressure events: {}", backpressure_events);
-    println!("Duration: {:.2}s", duration.as_secs_f64());
-    
-    assert!(backpressure_events > 0, "Should have experienced backpressure");
-    assert_eq!(received, sent, "Received should equal sent");
-    
+    assert!(backpressure > 0, "Should have backpressure");
+    assert_eq!(received, sent);
     cleanup(&path);
 }
 
-/// Test data integrity with checksums
 #[test]
 fn test_ipc_data_integrity() {
     let path = test_path("integrity");
     cleanup(&path);
     
-    let mut publisher = Publisher::<Slot8>::new(&path, 64 * 1024).unwrap();
-    let mut subscriber = Subscriber::<Slot8>::new(&path).unwrap();
+    let mut pub_ = Publisher::create(&path, 64 * 1024).unwrap();
+    let mut sub = Subscriber::open(&path).unwrap();
     
     let count = 100_000u64;
-    let mut expected_sum: u64 = 0;
-    let mut actual_sum: u64 = 0;
-    
-    // Calculate expected sum
-    for i in 0..count {
-        expected_sum = expected_sum.wrapping_add(i);
-    }
-    
-    let mut sent = 0u64;
-    let mut received = 0u64;
-    
+    let expected_sum: u64 = (0..count).fold(0u64, |a, b| a.wrapping_add(b));
+    let (mut sent, mut received, mut actual_sum) = (0u64, 0u64, 0u64);
     let start = Instant::now();
     
     while received < count && start.elapsed() < TEST_TIMEOUT {
-        // Send (use saturating_sub to avoid overflow)
         while sent < count && sent.saturating_sub(received) < 60_000 {
-            if publisher.send(&sent.to_le_bytes()).is_ok() {
-                sent += 1;
-            } else {
-                break;
-            }
+            if pub_.send(sent).is_ok() { sent += 1; } else { break; }
         }
-        
-        // Receive and sum
-        received += subscriber.receive(|slot| {
-            actual_sum = actual_sum.wrapping_add(slot.value);
-        }) as u64;
+        sub.receive(|val| {
+            actual_sum = actual_sum.wrapping_add(val);
+            received += 1;
+        });
     }
     
-    println!("\n=== IPC Data Integrity Test ===");
-    println!("Messages: {}/{}", received, count);
-    println!("Expected sum: {}", expected_sum);
-    println!("Actual sum: {}", actual_sum);
-    
-    assert_eq!(received, count, "Timed out before completion");
-    assert_eq!(actual_sum, expected_sum, "Data corruption detected!");
-    
+    assert_eq!(received, count, "Timed out");
+    assert_eq!(actual_sum, expected_sum, "Data corruption!");
     cleanup(&path);
 }
 
-/// Concurrent access test (simulated multi-process)
 #[test]
 fn test_ipc_concurrent_threads() {
     let path = "/tmp/flux-ipc-concurrent-test";
     let _ = fs::remove_file(path);
     
     let running = Arc::new(AtomicBool::new(true));
-    let sent_count = Arc::new(AtomicU64::new(0));
-    let recv_count = Arc::new(AtomicU64::new(0));
     let errors = Arc::new(AtomicU64::new(0));
     
-    // Spawn producer thread
     let path_clone = path.to_string();
     let running_prod = running.clone();
-    let sent_clone = sent_count.clone();
     
     let producer = thread::spawn(move || {
-        let mut publisher = Publisher::<Slot8>::new(&path_clone, 64 * 1024).unwrap();
+        let mut pub_ = Publisher::create(&path_clone, 64 * 1024).unwrap();
         let mut seq = 0u64;
-        
         while running_prod.load(Ordering::Relaxed) {
-            if publisher.send(&seq.to_le_bytes()).is_ok() {
-                seq += 1;
-                sent_clone.store(seq, Ordering::Relaxed);
-            }
+            if pub_.send(seq).is_ok() { seq += 1; }
         }
         seq
     });
     
-    // Give producer time to create file
     thread::sleep(Duration::from_millis(100));
     
-    // Spawn consumer thread
     let path_clone = path.to_string();
     let running_cons = running.clone();
-    let recv_clone = recv_count.clone();
     let errors_clone = errors.clone();
     
     let consumer = thread::spawn(move || {
-        let mut subscriber = match Subscriber::<Slot8>::new(&path_clone) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to open subscriber: {}", e);
-                return 0u64;
-            }
-        };
-        let mut expected = 0u64;
-        let mut total = 0u64;
+        let mut sub = Subscriber::open(&path_clone).unwrap();
+        let (mut expected, mut total) = (0u64, 0u64);
         let start = Instant::now();
         
-        while (running_cons.load(Ordering::Relaxed) || subscriber.available() > 0) 
-              && start.elapsed() < TEST_TIMEOUT {
-            let count = subscriber.receive(|slot| {
-                if slot.value != expected {
-                    errors_clone.fetch_add(1, Ordering::Relaxed);
-                }
+        while (running_cons.load(Ordering::Relaxed) || sub.available() > 0) && start.elapsed() < TEST_TIMEOUT {
+            let n = sub.receive(|val| {
+                if val != expected { errors_clone.fetch_add(1, Ordering::Relaxed); }
                 expected += 1;
             });
-            total += count as u64;
-            recv_clone.store(total, Ordering::Relaxed);
-            
-            if count == 0 {
-                thread::yield_now();
-            }
+            total += n as u64;
+            if n == 0 { thread::yield_now(); }
         }
         total
     });
     
-    // Run for 2 seconds
-    let duration = Duration::from_secs(2);
-    thread::sleep(duration);
-    
+    thread::sleep(Duration::from_secs(2));
     running.store(false, Ordering::SeqCst);
     
     let total_sent = producer.join().unwrap();
     let total_recv = consumer.join().unwrap();
     let error_count = errors.load(Ordering::Relaxed);
     
-    println!("\n=== IPC Concurrent Test ===");
-    println!("Sent: {}", total_sent);
-    println!("Received: {}", total_recv);
-    println!("Errors: {}", error_count);
-    println!("Rate: {:.2} M/s", total_sent as f64 / duration.as_secs_f64() / 1_000_000.0);
-    
-    assert_eq!(error_count, 0, "Ordering errors in concurrent access!");
-    assert!(total_recv > 0, "Consumer didn't receive any messages");
+    assert_eq!(error_count, 0, "Ordering errors!");
+    assert!(total_recv > 0, "No messages received");
+    println!("Concurrent: sent={} recv={}", total_sent, total_recv);
     
     let _ = fs::remove_file(path);
 }
 
-/// Test ring buffer wraparound in IPC
 #[test]
 fn test_ipc_wraparound() {
     let path = test_path("wrap");
     cleanup(&path);
     
-    // Small ring to force many wraparounds
-    let mut publisher = Publisher::<Slot8>::new(&path, 256).unwrap();
-    let mut subscriber = Subscriber::<Slot8>::new(&path).unwrap();
+    let mut pub_ = Publisher::create(&path, 256).unwrap();
+    let mut sub = Subscriber::open(&path).unwrap();
     
     let count = 10_000u64;
-    let mut sent = 0u64;
-    let mut received = 0u64;
-    let mut errors = 0u64;
-    
+    let (mut sent, mut received, mut errors, mut expected) = (0u64, 0u64, 0u64, 0u64);
     let start = Instant::now();
     
     while received < count && start.elapsed() < TEST_TIMEOUT {
-        // Send some
         for _ in 0..10 {
             if sent < count {
-                match publisher.send(&sent.to_le_bytes()) {
-                    Ok(_) => sent += 1,
-                    Err(_) => break,
-                }
+                if pub_.send(sent).is_ok() { sent += 1; } else { break; }
             }
         }
-        
-        // Receive some
-        let mut expected = received;
-        received += subscriber.receive(|slot| {
-            if slot.value != expected {
-                errors += 1;
-            }
+        sub.receive(|val| {
+            if val != expected { errors += 1; }
             expected += 1;
-        }) as u64;
+            received += 1;
+        });
     }
     
-    println!("\n=== IPC Wraparound Test ===");
-    println!("Ring size: 256");
-    println!("Messages: {}/{}", received, count);
-    println!("Wraparounds: ~{}", received / 256);
-    println!("Errors: {}", errors);
-    
-    assert_eq!(received, count, "Timed out before completion");
-    assert_eq!(errors, 0, "Wraparound caused data corruption!");
-    
+    assert_eq!(received, count, "Timed out");
+    assert_eq!(errors, 0, "Wraparound corruption!");
     cleanup(&path);
 }
