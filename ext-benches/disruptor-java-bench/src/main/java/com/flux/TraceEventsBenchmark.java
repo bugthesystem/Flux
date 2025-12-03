@@ -27,8 +27,8 @@ public class TraceEventsBenchmark {
     private static final long EVENT_PURCHASE = 4;
     private static final long EVENT_LOGIN = 5;
     
-    private static final long EVENTS_PER_TYPE = 1_000_000_000L; // 1B per type
-    private static final long TOTAL_EVENTS = EVENTS_PER_TYPE * 5; // 5B total
+    private static final long EVENTS_PER_TYPE = 20_000_000L; // 20M per type
+    private static final long TOTAL_EVENTS = EVENTS_PER_TYPE * 5; // 100M total
     
     public static class TraceEvent {
         private long eventType;

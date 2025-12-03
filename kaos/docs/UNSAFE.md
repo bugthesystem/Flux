@@ -12,7 +12,7 @@
 
 ### Memory-Mapped I/O
 ```rust
-unsafe { libc::mmap(...) }  // Zero-copy buffers
+unsafe { libc::mmap(...) }  // Shared memory buffers
 unsafe { libc::mlock(...) } // Prevent swapping
 unsafe { libc::msync(...) } // IPC sync
 ```

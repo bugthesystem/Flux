@@ -15,7 +15,7 @@ const EVENT_PAGEVIEW: u64 = 3;
 const EVENT_PURCHASE: u64 = 4;
 const EVENT_LOGIN: u64 = 5;
 
-const EVENTS_PER_TYPE: u64 = 2_000_000; // 2M per type = 10M total
+const EVENTS_PER_TYPE: u64 = 20_000_000; // 20M per type = 100M total
 const TOTAL_EVENTS: u64 = EVENTS_PER_TYPE * 5;
 const RING_SIZE: usize = 1024 * 1024;
 const BATCH_SIZE: usize = 8192;
@@ -180,7 +180,7 @@ fn run_disruptor_trace_events() -> (u64, bool) {
 }
 
 fn benchmark_trace_events(c: &mut Criterion) {
-    let mut group = c.benchmark_group("Trace Events (10M events)");
+    let mut group = c.benchmark_group("Trace Events (100M)");
     group.throughput(Throughput::Elements(TOTAL_EVENTS));
     group.sample_size(10);
 

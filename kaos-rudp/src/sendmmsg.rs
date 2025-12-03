@@ -70,6 +70,10 @@ impl BatchSender {
     }
 }
 
+// Safety: BatchSender owns all its data and doesn't share references across threads
+#[cfg(target_os = "linux")]
+unsafe impl Send for BatchSender {}
+
 #[cfg(target_os = "linux")]
 pub struct BatchReceiver {
     msgvec: Vec<mmsghdr>,
@@ -125,6 +129,10 @@ impl BatchReceiver {
         &self.buffers[idx][..len]
     }
 }
+
+// Safety: BatchReceiver owns all its data and doesn't share references across threads
+#[cfg(target_os = "linux")]
+unsafe impl Send for BatchReceiver {}
 
 // Non-Linux: single-packet fallback
 #[cfg(not(target_os = "linux"))]

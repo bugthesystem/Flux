@@ -1,4 +1,6 @@
-//! kaos-ipc - Zero-copy inter-process communication via shared memory.
+//! kaos-ipc - High-performance inter-process communication via shared memory.
+//!
+//! Zero-copy reads via mmap. Writes copy data to shared memory.
 //!
 //! ```rust,no_run
 //! use kaos_ipc::{Publisher, Subscriber};

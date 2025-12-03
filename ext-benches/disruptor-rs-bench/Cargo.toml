@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 disruptor = "3.6"
-flux = { path = "../../kaos" }
+kaos = { path = "../../kaos" }
 criterion = { version = "0.8.0", features = ["html_reports"] }
 
 [[bench]]

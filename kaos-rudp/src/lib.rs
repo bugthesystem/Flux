@@ -9,7 +9,7 @@
 //!
 //! - **Fast**: 3M+ messages/sec on localhost (faster than Aeron UDP)
 //! - **Reliable**: NAK-based retransmission for loss recovery
-//! - **Zero-copy**: Minimal allocations in hot path
+//! - **Minimal allocations**: Pre-allocated buffers in hot path
 //! - **Flexible**: Multiple header formats (FastHeader for speed, full header for reliability)
 //!
 //! ## Quick Start
@@ -139,7 +139,7 @@ impl ReliableUdpHeader {
         }
     }
 
-    /// Convert from bytes (zero-copy)
+    /// Convert from bytes
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < Self::SIZE {
             return None;
@@ -714,7 +714,7 @@ impl ReliableUdpRingBufferTransport {
         self.congestion.in_flight()
     }
 
-    /// Zero-copy, callback-based delivery: process each message in-place with the provided closure.
+    /// Callback-based delivery: process each message with the provided closure.
     pub fn receive_batch_with<F: FnMut(&[u8])>(&mut self, max_count: usize, mut f: F) {
         RECV_BUFFERS.with(|bufs_cell| {
             RECV_LENS.with(|lens_cell| {
