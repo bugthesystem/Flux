@@ -37,7 +37,7 @@ fn main() {
         .map(|s| s.as_str())
         .collect();
     let (send_path, recv_path) = (
-        paths.get(0).copied().unwrap_or("/tmp/kaos-send"),
+        paths.first().copied().unwrap_or("/tmp/kaos-send"),
         paths.get(1).copied().unwrap_or("/tmp/kaos-recv"),
     );
 

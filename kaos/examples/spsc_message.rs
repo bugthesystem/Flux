@@ -80,7 +80,7 @@ fn main() {
         last_value: Option<u64>,
     }
 
-    impl EventHandler for AverageHandler {
+    impl EventHandler<MessageSlot> for AverageHandler {
         fn on_event(&mut self, event: &MessageSlot, _seq: u64, _end_of_batch: bool) {
             let value = event.sequence;
             if self.first_value.is_none() {

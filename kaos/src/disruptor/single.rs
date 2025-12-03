@@ -218,6 +218,9 @@ pub struct BroadcastRingBuffer<T: RingBufferEntry> {
     gating_sequence: PaddedAtomicU64,
 }
 
+unsafe impl<T: RingBufferEntry> Send for BroadcastRingBuffer<T> {}
+unsafe impl<T: RingBufferEntry> Sync for BroadcastRingBuffer<T> {}
+
 impl<T: RingBufferEntry> BroadcastRingBuffer<T> {
     pub fn new(config: RingBufferConfig) -> Result<Self> {
         if config.size == 0 || !config.size.is_power_of_two() {
@@ -453,7 +456,8 @@ pub type MessageRingBuffer = BroadcastRingBuffer<crate::disruptor::MessageSlot>;
 // ============================================================================
 
 pub struct Producer<T: RingBufferEntry> {
-    ring_buffer: *mut BroadcastRingBuffer<T>,
+    /// Raw pointer for macro access (publish_unrolled!)
+    pub ring_buffer: *mut BroadcastRingBuffer<T>,
     _arc: Arc<BroadcastRingBuffer<T>>,
 }
 

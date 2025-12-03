@@ -116,7 +116,7 @@ macro_rules! publish_unrolled {
                 }
             }
 
-            rb.publish_batch_relaxed($seq, count);
+            rb.publish_batch_relaxed($seq, $seq + count as u64 - 1);
             Ok(count)
         } else {
             Err("Ring buffer full")

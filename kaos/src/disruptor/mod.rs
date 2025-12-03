@@ -41,7 +41,7 @@ pub use ipc::SharedRingBuffer;
 use crate::error::{ Result, KaosError };
 
 /// Default ring buffer size (must be power of 2)
-const DEFAULT_RING_BUFFER_SIZE: usize = 1024 * 1024; // 1M slots
+const DEFAULT_RING_BUFFER_SIZE: usize = 64 * 1024; // 64K slots
 
 /// Sequence number type for ring buffer positions
 pub type Sequence = u64;
