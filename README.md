@@ -19,9 +19,9 @@
 
 ## Overview
 
-Kaos provides lock-free ring buffers for inter-thread, inter-process, and network communication. Built on the [LMAX Disruptor](https://lmax-exchange.github.io/disruptor/) pattern with modern Rust.
+Kaos provides lock-free ring buffers for inter-thread, inter-process, and network communication. Built on the [LMAX Disruptor](https://lmax-exchange.github.io/disruptor/) and [Aeron](https://github.com/real-logic/aeron) high performance networking patterns with modern Rust.
 
-> **Note:** Preview release. APIs may change.
+> **Note:** Preview release. Uses `unsafe` perf critical paths (soon to be optional with `safe` and `unsafe` variants) and APIs may change.
 
 ## Crates
 
