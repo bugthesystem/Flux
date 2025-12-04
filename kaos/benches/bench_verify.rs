@@ -207,12 +207,12 @@ fn bench_xor_verify(events: u64) -> u64 {
 }
 
 // ============================================================================
-// MessageSlot Variable Data
+// MessageSlot Variable Data (uses lock-free BroadcastRingBuffer)
 // ============================================================================
 
 fn bench_message_slot(events: u64) -> u64 {
     let config = RingBufferConfig::new(RING_SIZE).unwrap();
-    let ring = Arc::new(parking_lot::Mutex::new(MessageRingBuffer::new(config).unwrap()));
+    let ring = Arc::new(MessageRingBuffer::new(config).unwrap());
     let received_count = Arc::new(AtomicU64::new(0));
 
     let ring_cons = ring.clone();
@@ -220,21 +220,13 @@ fn bench_message_slot(events: u64) -> u64 {
     let consumer = thread::spawn(move || {
         let mut received = 0u64;
         while received < events {
-            let count = {
-                let guard = ring_cons.lock();
-                let slots = guard.try_consume_batch(0, 1024);
-                let c = slots.len();
-                for slot in slots {
+            let batch = ring_cons.try_consume_batch_relaxed(0, 1024);
+            if !batch.is_empty() {
+                for slot in batch {
                     black_box(slot.data.len());
                 }
-                c
-            };
-
-            if count > 0 {
-                received += count as u64;
+                received += batch.len() as u64;
                 recv_cnt.store(received, Ordering::Release);
-                let mut guard = ring_cons.lock();
-                guard.advance_consumer(0, received.saturating_sub(1));
             } else {
                 std::hint::spin_loop();
             }
@@ -243,21 +235,27 @@ fn bench_message_slot(events: u64) -> u64 {
 
     let msg = b"Hello, World! This is a test message for benchmarking.";
     let mut sent = 0u64;
+    
+    // Use raw pointer for producer (same pattern as bench_xor_verify)
+    let ring_ptr = Arc::as_ptr(&ring) as *mut MessageRingBuffer;
+    
     while sent < events {
+        let ring_mut = unsafe { &mut *ring_ptr };
         let batch = ((events - sent) as usize).min(1024);
-        let mut guard = ring.lock();
-        if let Some((_seq, slots)) = guard.try_claim_slots(batch) {
+        if let Some((seq, slots)) = ring_mut.try_claim_slots_relaxed(batch) {
             let count = slots.len();
             for slot in slots {
                 slot.set_data(msg);
             }
-            guard.publish_batch(sent, count);
+            ring_mut.publish_batch_relaxed(seq, seq + (count as u64) - 1);
             sent += count as u64;
+        } else {
+            std::hint::spin_loop();
         }
     }
 
     consumer.join().unwrap();
-    events
+    black_box(received_count.load(Ordering::Acquire))
 }
 
 // ============================================================================

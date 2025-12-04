@@ -53,7 +53,11 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
         }
 
         let slot_size = std::mem::size_of::<T>();
-        let file_size = HEADER_SIZE + capacity * slot_size;
+        let file_size = HEADER_SIZE.checked_add(
+            capacity
+                .checked_mul(slot_size)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Size overflow"))?
+        ).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Size overflow"))?;
 
         let file = OpenOptions::new()
             .read(true)
@@ -109,6 +113,11 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
         let file = OpenOptions::new().read(true).write(true).open(&path)?;
         let file_size = file.metadata()?.len() as usize;
+
+        // Bounds check: file must be large enough for header
+        if file_size < HEADER_SIZE {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "File too small for header"));
+        }
 
         let mmap_ptr = unsafe {
             let ptr = libc::mmap(
@@ -185,7 +194,14 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
         unsafe { &mut *(self.mmap_ptr as *mut SharedHeader) }
     }
     fn slot_ptr(&self, seq: u64) -> *mut T {
-        let offset = HEADER_SIZE + ((seq & self.mask) as usize) * self.slot_size;
+        let idx = (seq & self.mask) as usize;
+        debug_assert!(
+            idx < (self.capacity as usize),
+            "slot_ptr: idx {} >= capacity {}",
+            idx,
+            self.capacity
+        );
+        let offset = HEADER_SIZE + idx * self.slot_size;
         unsafe { self.mmap_ptr.add(offset) as *mut T }
     }
 
@@ -202,7 +218,22 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
         Some(seq)
     }
 
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn write_slot(&mut self, seq: u64, value: T) {
+        std::ptr::write_volatile(self.slot_ptr(seq), value);
+    }
+
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn write_slot(&mut self, seq: u64, value: T) {
+        let idx = (seq & self.mask) as usize;
+        debug_assert!(
+            idx < (self.capacity as usize),
+            "SharedRingBuffer::write_slot: idx {} >= capacity {}",
+            idx,
+            self.capacity
+        );
         std::ptr::write_volatile(self.slot_ptr(seq), value);
     }
 
@@ -267,7 +298,22 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
         count
     }
 
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn read_slot(&self, seq: u64) -> T {
+        std::ptr::read_volatile(self.slot_ptr(seq))
+    }
+
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn read_slot(&self, seq: u64) -> T {
+        let idx = (seq & self.mask) as usize;
+        debug_assert!(
+            idx < (self.capacity as usize),
+            "SharedRingBuffer::read_slot: idx {} >= capacity {}",
+            idx,
+            self.capacity
+        );
         std::ptr::read_volatile(self.slot_ptr(seq))
     }
 

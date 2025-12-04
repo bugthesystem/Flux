@@ -85,8 +85,18 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
         }
     }
 
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
         let idx = (sequence as usize) & self.mask;
+        std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
+    }
+
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn write_slot(&self, sequence: u64, value: T) {
+        let idx = (sequence as usize) & self.mask;
+        debug_assert!(idx < self.buffer.len(), "MpscRingBuffer::write_slot: idx {} >= len {}", idx, self.buffer.len());
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 
@@ -104,8 +114,18 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
         self.available[avail_idx].fetch_xor(1u64 << bit_idx, Ordering::Release);
     }
 
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
         let idx = (sequence as usize) & self.mask;
+        std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
+    }
+
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn read_slot(&self, sequence: u64) -> T {
+        let idx = (sequence as usize) & self.mask;
+        debug_assert!(idx < self.buffer.len(), "MpscRingBuffer::read_slot: idx {} >= len {}", idx, self.buffer.len());
         std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
     }
 
@@ -321,8 +341,18 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
         }
     }
 
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
         let idx = (sequence as usize) & self.mask;
+        std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
+    }
+
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn write_slot(&self, sequence: u64, value: T) {
+        let idx = (sequence as usize) & self.mask;
+        debug_assert!(idx < self.buffer.len(), "SpmcRingBuffer::write_slot: idx {} >= len {}", idx, self.buffer.len());
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 
@@ -366,8 +396,18 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
         }
     }
 
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
         let idx = (sequence as usize) & self.mask;
+        std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
+    }
+
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn read_slot(&self, sequence: u64) -> T {
+        let idx = (sequence as usize) & self.mask;
+        debug_assert!(idx < self.buffer.len(), "SpmcRingBuffer::read_slot: idx {} >= len {}", idx, self.buffer.len());
         std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
     }
 
@@ -468,8 +508,18 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
         }
     }
 
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
         let idx = (sequence as usize) & self.mask;
+        std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
+    }
+
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn write_slot(&self, sequence: u64, value: T) {
+        let idx = (sequence as usize) & self.mask;
+        debug_assert!(idx < self.buffer.len(), "MpmcRingBuffer::write_slot: idx {} >= len {}", idx, self.buffer.len());
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 

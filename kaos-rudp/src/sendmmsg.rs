@@ -19,7 +19,13 @@ pub struct BatchSender {
 
 #[cfg(target_os = "linux")]
 impl BatchSender {
+    /// Create a new batch sender with the given batch size.
+    /// 
+    /// # Panics
+    /// Panics if `batch_size` is 0.
     pub fn new(batch_size: usize) -> Self {
+        assert!(batch_size > 0, "batch_size must be > 0");
+        // Safety: libc mmsghdr, iovec, sockaddr_in are valid when zeroed
         Self {
             msgvec: vec![unsafe { std::mem::zeroed() }; batch_size],
             iovecs: vec![unsafe { std::mem::zeroed() }; batch_size],
@@ -84,7 +90,14 @@ pub struct BatchReceiver {
 
 #[cfg(target_os = "linux")]
 impl BatchReceiver {
+    /// Create a new batch receiver.
+    /// 
+    /// # Panics
+    /// Panics if `batch_size` or `buffer_size` is 0.
     pub fn new(batch_size: usize, buffer_size: usize) -> Self {
+        assert!(batch_size > 0, "batch_size must be > 0");
+        assert!(buffer_size > 0, "buffer_size must be > 0");
+        // Safety: libc mmsghdr, iovec, sockaddr_in are valid when zeroed
         Self {
             msgvec: vec![unsafe { std::mem::zeroed() }; batch_size],
             iovecs: vec![unsafe { std::mem::zeroed() }; batch_size],

@@ -8,6 +8,7 @@
 
 use crate::disruptor::{RingBufferEntry, Sequence};
 use crate::error::{Result, KaosError};
+use bytemuck::Zeroable;
 
 /// 8-byte slot
 #[repr(C, align(8))]
@@ -118,8 +119,9 @@ pub enum MessageType {
 }
 
 /// 128-byte aligned to prevent false sharing (Apple Silicon has 128B cache lines).
+/// Note: Cannot derive Pod due to alignment padding, but Zeroable is safe.
 #[repr(C, align(128))]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Zeroable)]
 pub struct MessageSlot {
     pub sequence: u64,
     pub timestamp: u64,
@@ -132,9 +134,18 @@ pub struct MessageSlot {
     pub data: [u8; MAX_MESSAGE_DATA_SIZE],
 }
 
+/// Safe path uses bytemuck::Zeroable, unsafe path uses mem::zeroed
+#[cfg(feature = "unsafe-perf")]
 impl Default for MessageSlot {
     fn default() -> Self {
         unsafe { std::mem::zeroed() }
+    }
+}
+
+#[cfg(not(feature = "unsafe-perf"))]
+impl Default for MessageSlot {
+    fn default() -> Self {
+        Zeroable::zeroed()
     }
 }
 

@@ -151,13 +151,13 @@ impl ReliableUdpHeader {
         }
     }
 
-    /// Convert from bytes
+    /// Convert from bytes (safe via bytemuck)
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() < Self::SIZE {
             return None;
         }
-
-        unsafe { Some(std::ptr::read_unaligned(bytes.as_ptr() as *const Self)) }
+        // Safe: ReliableUdpHeader derives Pod
+        Some(*bytemuck::from_bytes::<Self>(&bytes[..Self::SIZE]))
     }
 
     pub fn from_packet_with_payload_check(packet: &[u8]) -> Option<(&Self, &[u8])> {
@@ -179,9 +179,8 @@ impl ReliableUdpHeader {
 
     pub fn calculate_checksum(&mut self, payload: &[u8]) {
         self.checksum = 0;
-        let header_bytes = unsafe {
-            std::slice::from_raw_parts(self as *const Self as *const u8, Self::SIZE)
-        };
+        // Safe: ReliableUdpHeader derives Pod
+        let header_bytes = bytemuck::bytes_of(self);
 
         // Use platform-optimized CRC32 calculation (incremental to avoid allocation)
         let mut crc = crc32::crc32_simd(header_bytes);
@@ -352,24 +351,16 @@ impl ReliableUdpRingBufferTransport {
         let mut stack_buf = [0u8; MAX_STACK_SIZE];
 
         let packet: &[u8] = if total_len <= MAX_STACK_SIZE {
-            stack_buf[..ReliableUdpHeader::SIZE].copy_from_slice(unsafe {
-                std::slice::from_raw_parts(
-                    &header as *const _ as *const u8,
-                    ReliableUdpHeader::SIZE
-                )
-            });
+            // Safe: ReliableUdpHeader derives Pod
+            stack_buf[..ReliableUdpHeader::SIZE].copy_from_slice(bytemuck::bytes_of(&header));
             stack_buf[ReliableUdpHeader::SIZE..total_len].copy_from_slice(data);
             &stack_buf[..total_len]
         } else {
             return LARGE_MSG_BUFFER.with(|buf_cell| {
                 let mut buffer = buf_cell.borrow_mut();
                 buffer.clear();
-                buffer.extend_from_slice(unsafe {
-                    std::slice::from_raw_parts(
-                        &header as *const _ as *const u8,
-                        ReliableUdpHeader::SIZE
-                    )
-                });
+                // Safe: ReliableUdpHeader derives Pod
+                buffer.extend_from_slice(bytemuck::bytes_of(&header));
                 buffer.extend_from_slice(data);
 
                 if let Some((slot_seq, slots)) = self.send_window.try_claim_slots(1) {
@@ -437,12 +428,8 @@ impl ReliableUdpRingBufferTransport {
 
                     // Minimal 8-byte header
                     let header = FastHeader::new(seq, msg.len());
-                    buf.extend_from_slice(unsafe {
-                        std::slice::from_raw_parts(
-                            &header as *const _ as *const u8,
-                            FastHeader::SIZE
-                        )
-                    });
+                    // Safe: FastHeader derives Pod
+                    buf.extend_from_slice(bytemuck::bytes_of(&header));
                     buf.extend_from_slice(msg);
                 }
 
@@ -530,9 +517,8 @@ impl ReliableUdpRingBufferTransport {
         let payload = [start_seq.to_le_bytes(), end_seq.to_le_bytes()].concat();
         let mut header = ReliableUdpHeader::new(0, start_seq, MessageType::Nak, 16);
         header.calculate_checksum(&payload);
-        packet.extend_from_slice(unsafe {
-            std::slice::from_raw_parts(&header as *const _ as *const u8, ReliableUdpHeader::SIZE)
-        });
+        // Safe: ReliableUdpHeader derives Pod
+        packet.extend_from_slice(bytemuck::bytes_of(&header));
         packet.extend_from_slice(&payload);
 
         #[cfg(feature = "debug")]
@@ -555,13 +541,12 @@ impl ReliableUdpRingBufferTransport {
     pub fn send_ack(&self, acked_seq: u64) {
         let mut header = ReliableUdpHeader::new(0, acked_seq, MessageType::Ack, 0);
         header.calculate_checksum(&[]);
-        let packet: [u8; ReliableUdpHeader::SIZE] = unsafe {
-            std::ptr::read(&header as *const _ as *const [u8; ReliableUdpHeader::SIZE])
-        };
+        // Safe: ReliableUdpHeader derives Pod
+        let packet = bytemuck::bytes_of(&header);
 
         #[cfg(feature = "debug")]
         eprintln!("[ACK-SEND] Sending ACK for seq {} to {}", acked_seq, self.remote_nak_addr);
-        let _ = self.nak_socket.send_to(&packet, self.remote_nak_addr);
+        let _ = self.nak_socket.send_to(packet, self.remote_nak_addr);
     }
 
     /// Process incoming ACKs and advance send window

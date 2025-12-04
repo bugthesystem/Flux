@@ -18,9 +18,11 @@ parking_lot = "0.12"
 libc = "0.2"
 crc32fast = "1.3"
 thiserror = "2.0.1"
+bytemuck = { version = "1.14", features = ["derive"] }
 
 [features]
 default = []
+unsafe-perf = []
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -29,7 +31,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 loom = "0.7"
 
 # ============================================================================
-# Benchmarks (5 consolidated files)
+# Benchmarks
 # ============================================================================
 
 [[bench]]

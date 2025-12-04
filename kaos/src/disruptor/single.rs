@@ -87,7 +87,9 @@ impl<T: RingBufferEntry> RingBuffer<T> {
             return Err(KaosError::config("Size must be power of 2"));
         }
 
-        let buffer_size = size * std::mem::size_of::<T>();
+        let buffer_size = size
+            .checked_mul(std::mem::size_of::<T>())
+            .ok_or_else(|| KaosError::config("Buffer size overflow"))?;
         let ptr = unsafe {
             let p = libc::mmap(
                 ptr::null_mut(),
@@ -147,15 +149,23 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         if next.wrapping_sub(consumer_seq) < (self.size as u64) {
             let start_idx = (local_cursor as usize) & self.mask;
             let end_idx = start_idx + count;
+            debug_assert!(
+                start_idx < self.size,
+                "try_claim_slots: start {} >= size {}",
+                start_idx,
+                self.size
+            );
             let slots = if end_idx <= self.size {
                 unsafe { std::slice::from_raw_parts_mut(self.buffer.add(start_idx), count) }
             } else {
-                unsafe {
-                    std::slice::from_raw_parts_mut(
-                        self.buffer.add(start_idx),
-                        self.size - start_idx
-                    )
-                }
+                let len = self.size - start_idx;
+                debug_assert!(
+                    len <= self.size,
+                    "try_claim_slots: len {} > size {}",
+                    len,
+                    self.size
+                );
+                unsafe { std::slice::from_raw_parts_mut(self.buffer.add(start_idx), len) }
             };
             Some((local_cursor, slots))
         } else {
@@ -163,14 +173,44 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         }
     }
 
+    /// Get a batch of slots for reading. Safe path includes bounds check.
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub fn get_read_batch(&self, cursor: u64, count: usize) -> &[T] {
         let start_idx = (cursor as usize) & self.mask;
         let actual = count.min(self.size - start_idx);
         unsafe { std::slice::from_raw_parts(self.buffer.add(start_idx), actual) }
     }
 
+    /// Get a batch of slots for reading. Safe path includes bounds check.
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub fn get_read_batch(&self, cursor: u64, count: usize) -> &[T] {
+        let start_idx = (cursor as usize) & self.mask;
+        let actual = count.min(self.size - start_idx);
+        debug_assert!(
+            start_idx + actual <= self.size,
+            "get_read_batch: end {} > size {}",
+            start_idx + actual,
+            self.size
+        );
+        unsafe { std::slice::from_raw_parts(self.buffer.add(start_idx), actual) }
+    }
+
+    /// Write a value to a slot. Safe path includes bounds check.
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
         let idx = (sequence as usize) & self.mask;
+        std::ptr::write_volatile(self.buffer.add(idx), value);
+    }
+
+    /// Write a value to a slot. Safe path includes bounds check.
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn write_slot(&self, sequence: u64, value: T) {
+        let idx = (sequence as usize) & self.mask;
+        debug_assert!(idx < self.size, "write_slot: idx {} >= size {}", idx, self.size);
         std::ptr::write_volatile(self.buffer.add(idx), value);
     }
 
@@ -179,8 +219,20 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         self.producer_cursor.store(sequence, Ordering::Relaxed);
     }
 
+    /// Read a value from a slot. Safe path includes bounds check.
+    #[cfg(feature = "unsafe-perf")]
+    #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
         let idx = (sequence as usize) & self.mask;
+        std::ptr::read_volatile(self.buffer.add(idx))
+    }
+
+    /// Read a value from a slot. Safe path includes bounds check.
+    #[cfg(not(feature = "unsafe-perf"))]
+    #[inline(always)]
+    pub unsafe fn read_slot(&self, sequence: u64) -> T {
+        let idx = (sequence as usize) & self.mask;
+        debug_assert!(idx < self.size, "read_slot: idx {} >= size {}", idx, self.size);
         std::ptr::read_volatile(self.buffer.add(idx))
     }
 
@@ -367,20 +419,28 @@ impl<T: RingBufferEntry> BroadcastRingBuffer<T> {
     }
 
     pub fn try_consume_batch_relaxed(&self, consumer_id: usize, count: usize) -> &[T] {
-        let mut current = self.consumer_sequences[consumer_id].load(Ordering::Relaxed);
-        let was_max = current == u64::MAX;
-        if was_max {
-            current = 0;
-            self.consumer_sequences[consumer_id].store(0, Ordering::Relaxed);
-        }
-
+        let current = self.consumer_sequences[consumer_id].load(Ordering::Relaxed);
         let producer = self.producer_sequence.load(Ordering::Relaxed);
-        let available = producer.saturating_sub(current);
-        if available == 0 {
+
+        // Both uninitialized - nothing to consume
+        if producer == u64::MAX {
             return &[];
         }
 
-        let start_seq = if was_max { 0 } else { current + 1 };
+        // Calculate available: if current is MAX, we start from 0
+        // producer = last published seq, so available = producer - last_consumed
+        let (start_seq, available) = if current == u64::MAX {
+            // First consume: sequences 0..producer are available (producer+1 items)
+            (0u64, producer + 1)
+        } else {
+            // Normal: sequences current+1..producer are available
+            let avail = producer.saturating_sub(current);
+            if avail == 0 {
+                return &[];
+            }
+            (current + 1, avail)
+        };
+
         let start_idx = (start_seq as usize) & self.mask;
         let available_to_end = self.config.size - start_idx;
         let actual = count.min(available as usize).min(available_to_end);

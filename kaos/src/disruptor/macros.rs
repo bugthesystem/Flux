@@ -21,8 +21,8 @@ macro_rules! publish_batch {
         $body:block
     ) => {
         {
-        let ring_ptr = std::sync::Arc::as_ptr(&$ring);
-        let ring_ref = unsafe { &*(ring_ptr as *const $crate::disruptor::RingBuffer<$slot_type>) };
+        // Safe: Arc::as_ref gives safe reference
+        let ring_ref: &$crate::disruptor::RingBuffer<$slot_type> = $ring.as_ref();
 
         if let Some((seq, slots)) = ring_ref.try_claim_slots($batch_size, $cursor) {
             let count = slots.len();
@@ -76,6 +76,10 @@ macro_rules! consume_batch {
 }
 
 /// Publish with 8x loop unrolling for MessageRingBuffer
+/// 
+/// # Safety (unsafe-perf feature)
+/// Uses `get_unchecked_mut` for max performance.
+/// Safe mode uses bounds-checked indexing.
 #[macro_export]
 macro_rules! publish_unrolled {
     (
@@ -88,16 +92,17 @@ macro_rules! publish_unrolled {
     ) => {
         {
         let rb_ptr = $producer.ring_buffer;
+        // Safety: rb_ptr valid for Producer's lifetime
         let rb = unsafe { &mut *rb_ptr };
 
         if let Some(($seq, slots)) = rb.try_claim_slots_relaxed($batch_size) {
             let count = slots.len();
+            let mut $idx = 0;
 
-            unsafe {
-                let mut $idx = 0;
-
-                // Unroll by 8
-                while $idx + 8 <= count {
+            // Unroll by 8
+            while $idx + 8 <= count {
+                #[cfg(feature = "unsafe-perf")]
+                unsafe {
                     { let $slot = slots.get_unchecked_mut($idx); $($body)* } $idx += 1;
                     { let $slot = slots.get_unchecked_mut($idx); $($body)* } $idx += 1;
                     { let $slot = slots.get_unchecked_mut($idx); $($body)* } $idx += 1;
@@ -107,13 +112,26 @@ macro_rules! publish_unrolled {
                     { let $slot = slots.get_unchecked_mut($idx); $($body)* } $idx += 1;
                     { let $slot = slots.get_unchecked_mut($idx); $($body)* } $idx += 1;
                 }
-
-                // Remainder
-                while $idx < count {
-                    let $slot = slots.get_unchecked_mut($idx);
-                    $($body)*
-                    $idx += 1;
+                #[cfg(not(feature = "unsafe-perf"))]
+                {
+                    { let $slot = &mut slots[$idx]; $($body)* } $idx += 1;
+                    { let $slot = &mut slots[$idx]; $($body)* } $idx += 1;
+                    { let $slot = &mut slots[$idx]; $($body)* } $idx += 1;
+                    { let $slot = &mut slots[$idx]; $($body)* } $idx += 1;
+                    { let $slot = &mut slots[$idx]; $($body)* } $idx += 1;
+                    { let $slot = &mut slots[$idx]; $($body)* } $idx += 1;
+                    { let $slot = &mut slots[$idx]; $($body)* } $idx += 1;
+                    { let $slot = &mut slots[$idx]; $($body)* } $idx += 1;
                 }
+            }
+
+            // Remainder
+            while $idx < count {
+                #[cfg(feature = "unsafe-perf")]
+                unsafe { let $slot = slots.get_unchecked_mut($idx); $($body)* }
+                #[cfg(not(feature = "unsafe-perf"))]
+                { let $slot = &mut slots[$idx]; $($body)* }
+                $idx += 1;
             }
 
             rb.publish_batch_relaxed($seq, $seq + count as u64 - 1);
