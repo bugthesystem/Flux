@@ -173,6 +173,63 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         }
     }
 
+    /// Publish single event with in-place mutation.
+    /// Returns the sequence number, or None if full.
+    #[inline]
+    pub fn try_publish_with<F>(&self, local_cursor: u64, update: F) -> Option<u64>
+        where F: FnOnce(&mut T)
+    {
+        let next = local_cursor + 1;
+        let consumer_seq = self.consumer_cursor.load(Ordering::Relaxed);
+        if next.wrapping_sub(consumer_seq) < (self.size as u64) {
+            let idx = (local_cursor as usize) & self.mask;
+            let slot = unsafe { &mut *self.buffer.add(idx) };
+            update(slot);
+            self.publish(next);
+            Some(local_cursor)
+        } else {
+            None
+        }
+    }
+
+    /// Publish batch with in-place mutation (zero-copy writes).
+    /// Returns (start_sequence, count), or None if not enough space.
+    #[inline]
+    pub fn try_publish_batch_with<F>(
+        &self,
+        local_cursor: u64,
+        count: usize,
+        update: F
+    ) -> Option<(u64, usize)>
+        where
+            F: FnMut(&mut T, u64) // (slot, sequence)
+    {
+        if count == 0 {
+            return Some((local_cursor, 0));
+        }
+        let next = local_cursor + (count as u64);
+        let consumer_seq = self.consumer_cursor.load(Ordering::Relaxed);
+        if next.wrapping_sub(consumer_seq) < (self.size as u64) {
+            let start_idx = (local_cursor as usize) & self.mask;
+            let available = if start_idx + count <= self.size {
+                count
+            } else {
+                self.size - start_idx
+            };
+
+            let mut update = update;
+            for i in 0..available {
+                let slot = unsafe { &mut *self.buffer.add(start_idx + i) };
+                update(slot, local_cursor + (i as u64));
+            }
+
+            self.publish(local_cursor + (available as u64));
+            Some((local_cursor, available))
+        } else {
+            None
+        }
+    }
+
     /// Get a batch of slots for reading. Safe path includes bounds check.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
@@ -256,6 +313,134 @@ impl<T: RingBufferEntry> Drop for RingBuffer<T> {
 
 unsafe impl<T: RingBufferEntry> Send for RingBuffer<T> {}
 unsafe impl<T: RingBufferEntry> Sync for RingBuffer<T> {}
+
+// ============================================================================
+// FastProducer<T> - Per-event producer with cached consumer check
+// ============================================================================
+
+/// Producer that caches consumer position to reduce atomic loads.
+pub struct FastProducer<T: RingBufferEntry> {
+    ring: Arc<RingBuffer<T>>,
+    sequence: u64,
+    sequence_clear_of_consumers: u64,
+}
+
+impl<T: RingBufferEntry> FastProducer<T> {
+    pub fn new(ring: Arc<RingBuffer<T>>) -> Self {
+        let size = ring.size as u64;
+        Self {
+            ring,
+            sequence: 0,
+            sequence_clear_of_consumers: size - 1,
+        }
+    }
+
+    #[inline]
+    pub fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    /// Try to publish. Returns sequence on success, None if full.
+    #[inline]
+    pub fn try_publish<F>(&mut self, update: F) -> Option<u64> where F: FnOnce(&mut T) {
+        let seq = self.sequence;
+
+        if seq > self.sequence_clear_of_consumers {
+            let consumer_seq = self.ring.consumer_cursor.load(Ordering::Acquire);
+            let free_slots = (self.ring.size as u64).wrapping_sub(seq.wrapping_sub(consumer_seq));
+
+            if free_slots == 0 {
+                return None;
+            }
+
+            self.sequence_clear_of_consumers = consumer_seq + (self.ring.size as u64) - 1;
+        }
+
+        let idx = (seq as usize) & self.ring.mask;
+        let slot = unsafe { &mut *self.ring.buffer.add(idx) };
+        update(slot);
+
+        self.sequence += 1;
+        self.ring.producer_cursor.store(self.sequence, Ordering::Release);
+
+        Some(seq)
+    }
+
+    /// Publish, spinning until space is available.
+    #[inline]
+    pub fn publish<F>(&mut self, mut update: F) where F: FnMut(&mut T) {
+        loop {
+            let seq = self.sequence;
+
+            if seq <= self.sequence_clear_of_consumers {
+                let idx = (seq as usize) & self.ring.mask;
+                let slot = unsafe { &mut *self.ring.buffer.add(idx) };
+                update(slot);
+                self.sequence += 1;
+                self.ring.producer_cursor.store(self.sequence, Ordering::Release);
+                return;
+            }
+
+            let consumer_seq = self.ring.consumer_cursor.load(Ordering::Acquire);
+            let free_slots = (self.ring.size as u64).wrapping_sub(seq.wrapping_sub(consumer_seq));
+
+            if free_slots > 0 {
+                self.sequence_clear_of_consumers = consumer_seq + (self.ring.size as u64) - 1;
+                let idx = (seq as usize) & self.ring.mask;
+                let slot = unsafe { &mut *self.ring.buffer.add(idx) };
+                update(slot);
+                self.sequence += 1;
+                self.ring.producer_cursor.store(self.sequence, Ordering::Release);
+                return;
+            }
+
+            std::hint::spin_loop();
+        }
+    }
+
+    /// Try to publish batch. Returns (start_seq, count) on success.
+    #[inline]
+    pub fn try_publish_batch<F>(&mut self, count: usize, mut update: F) -> Option<(u64, usize)>
+        where F: FnMut(&mut T, u64)
+    {
+        if count == 0 {
+            return Some((self.sequence, 0));
+        }
+
+        let start_seq = self.sequence;
+        let end_seq = start_seq + (count as u64) - 1;
+
+        // Check if we have enough space
+        if end_seq > self.sequence_clear_of_consumers {
+            let consumer_seq = self.ring.consumer_cursor.load(Ordering::Acquire);
+            let free_slots = (self.ring.size as u64).wrapping_sub(
+                start_seq.wrapping_sub(consumer_seq)
+            );
+
+            if free_slots < (count as u64) {
+                return None;
+            }
+
+            self.sequence_clear_of_consumers = consumer_seq + (self.ring.size as u64) - 1;
+        }
+
+        // Write all slots
+        let start_idx = (start_seq as usize) & self.ring.mask;
+        let available_to_end = self.ring.size - start_idx;
+        let actual = count.min(available_to_end);
+
+        for i in 0..actual {
+            let slot = unsafe { &mut *self.ring.buffer.add(start_idx + i) };
+            update(slot, start_seq + (i as u64));
+        }
+
+        // Publish
+        self.sequence = start_seq + (actual as u64);
+        self.ring.producer_cursor.store(self.sequence, Ordering::Release);
+
+        Some((start_seq, actual))
+    }
+}
 
 // ============================================================================
 // BroadcastRingBuffer<T> - Multiple consumers see ALL messages

@@ -8,17 +8,17 @@
 //! - Events: 10M
 //! - Slot size: 8 bytes
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{ criterion_group, criterion_main, BenchmarkId, Criterion, Throughput };
 use std::hint::black_box;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
 // kaos
-use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot8};
+use kaos::disruptor::{ RingBuffer, RingBufferEntry, Slot8, FastProducer };
 
 // disruptor-rs
-use disruptor::{build_single_producer, build_multi_producer, BusySpin, Producer};
+use disruptor::{ build_single_producer, build_multi_producer, BusySpin, Producer };
 
 const RING_SIZE: usize = 1024 * 1024;
 const BATCH_SIZE: usize = 8192;
@@ -61,10 +61,10 @@ fn kaos_batch(events: u64) -> u64 {
         let batch = remaining.min(BATCH_SIZE);
         if let Some((seq, slots)) = ring_ref.try_claim_slots(batch, cursor) {
             for (i, slot) in slots.iter_mut().enumerate() {
-                slot.set_sequence((cursor + i as u64) % 5 + 1);
+                slot.set_sequence(((cursor + (i as u64)) % 5) + 1);
             }
-            ring_ref.publish(seq + slots.len() as u64);
-            cursor = seq + slots.len() as u64;
+            ring_ref.publish(seq + (slots.len() as u64));
+            cursor = seq + (slots.len() as u64);
         }
     }
 
@@ -72,7 +72,7 @@ fn kaos_batch(events: u64) -> u64 {
     events
 }
 
-/// kaos per-event API (fair comparison with disruptor-rs)
+/// kaos per-event API (old, checks consumer every time)
 fn kaos_per_event(events: u64) -> u64 {
     let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
@@ -100,10 +100,44 @@ fn kaos_per_event(events: u64) -> u64 {
     while cursor < events {
         let ring_ref = unsafe { &*ring_ptr };
         if let Some((seq, slots)) = ring_ref.try_claim_slots(1, cursor) {
-            slots[0].set_sequence(cursor % 5 + 1);
+            slots[0].set_sequence((cursor % 5) + 1);
             ring_ref.publish(seq + 1);
             cursor = seq + 1;
         }
+    }
+
+    consumer.join().unwrap();
+    events
+}
+
+/// kaos FastProducer (cached consumer check)
+fn kaos_fast_producer(events: u64) -> u64 {
+    let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
+    let producer_cursor = ring.producer_cursor();
+
+    let ring_cons = ring.clone();
+    let consumer = thread::spawn(move || {
+        let mut cursor = 0u64;
+        while cursor < events {
+            let prod_seq = producer_cursor.load(Ordering::Acquire);
+            if prod_seq > cursor {
+                let slot = ring_cons.get_read_batch(cursor, 1);
+                if !slot.is_empty() {
+                    black_box(slot[0].sequence());
+                    cursor += 1;
+                    ring_cons.update_consumer(cursor);
+                }
+            } else {
+                std::hint::spin_loop();
+            }
+        }
+    });
+
+    let mut producer = FastProducer::new(ring.clone());
+    for i in 0..events {
+        producer.publish(|slot| {
+            slot.value = (i % 5) + 1;
+        });
     }
 
     consumer.join().unwrap();
@@ -126,7 +160,7 @@ fn disruptor_spsc(events: u64) -> u64 {
 
     for i in 0..events {
         producer.publish(|slot| {
-            *slot = i % 5 + 1;
+            *slot = (i % 5) + 1;
         });
     }
 
@@ -136,7 +170,7 @@ fn disruptor_spsc(events: u64) -> u64 {
 
 /// disruptor-rs MPSC
 fn disruptor_mpsc(events: u64, num_producers: usize) -> u64 {
-    let events_per_producer = events / num_producers as u64;
+    let events_per_producer = events / (num_producers as u64);
 
     let processor = move |data: &u64, _seq: i64, _eob: bool| {
         black_box(*data);
@@ -152,7 +186,7 @@ fn disruptor_mpsc(events: u64, num_producers: usize) -> u64 {
             thread::spawn(move || {
                 for i in 0..events_per_producer {
                     p.publish(|slot| {
-                        *slot = i % 5 + 1;
+                        *slot = (i % 5) + 1;
                     });
                 }
             })
@@ -180,8 +214,12 @@ fn benchmark_spsc_comparison(c: &mut Criterion) {
         b.iter(|| kaos_batch(TOTAL_EVENTS))
     });
 
-    group.bench_function(BenchmarkId::new("kaos", "per-event"), |b| {
+    group.bench_function(BenchmarkId::new("kaos", "per-event-old"), |b| {
         b.iter(|| kaos_per_event(TOTAL_EVENTS))
+    });
+
+    group.bench_function(BenchmarkId::new("kaos", "FastProducer"), |b| {
+        b.iter(|| kaos_fast_producer(TOTAL_EVENTS))
     });
 
     group.bench_function(BenchmarkId::new("disruptor-rs", "per-event"), |b| {
@@ -207,9 +245,5 @@ fn benchmark_mpsc_comparison(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(
-    benches,
-    benchmark_spsc_comparison,
-    benchmark_mpsc_comparison,
-);
+criterion_group!(benches, benchmark_spsc_comparison, benchmark_mpsc_comparison);
 criterion_main!(benches);

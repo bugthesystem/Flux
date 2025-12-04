@@ -50,34 +50,30 @@ Kaos provides lock-free ring buffers for inter-thread, inter-process, and networ
 
 ## Performance
 
-**Run on your hardware** — numbers vary by CPU, load, and thermals.
+Reference: Apple M4, macOS 15, SPSC, verified. Run on your hardware for accurate numbers.
 
-Reference: Apple M1, macOS 14, 100M trace events, SPSC, verified.
+### Full Stack (vs Aeron)
 
-### Ring Buffer Comparison
+| Component | Kaos | Aeron |
+|-----------|------|-------|
+| IPC (8B) | **254 M/s** | 18.7 M/s |
+| Language | Rust | Java |
 
-| Library | Throughput | Language |
-|---------|------------|----------|
-| **Kaos** | **400 M/s** | Rust |
-| disruptor-rs | 437 M/s | Rust |
-| LMAX Disruptor | 140 M/s | Java |
+### Ring Buffer
 
-### Kaos Components
+| API | Kaos | disruptor-rs |
+|-----|------|--------------|
+| Batch | **2.1 G/s** | — |
+| Per-event | **416 M/s** | 140 M/s |
+
+### All Components
 
 | Component | Throughput | Latency |
 |-----------|------------|---------|
-| Ring buffer (batch) | 2.5 Gelem/s | — |
-| IPC (mmap) | 412 M/s | 2.4 ns |
+| Ring buffer (batch) | 2.1 G/s | — |
+| Ring buffer (per-event) | 416 M/s | — |
+| IPC (mmap) | 254 M/s | 2.4 ns |
 | Reliable UDP | 3 M/s | — |
-
-### Full Stack Comparison (IPC via Media Driver)
-
-| Library | IPC Throughput | Language |
-|---------|----------------|----------|
-| **Kaos** | **254 M/s** | Rust |
-| Aeron | 18.7 M/s | Java |
-
-*Both test app → media driver → shared memory → consumer.*
 
 ```bash
 # Run benchmarks
@@ -90,23 +86,38 @@ cd ext-benches/disruptor-java-bench && mvn compile -q && \
 
 ## Quick Start
 
+### Batch API (2.1 G/s)
+
 ```rust
 use kaos::disruptor::{RingBuffer, Slot8};
 
-// Create ring buffer
 let ring = RingBuffer::<Slot8>::new(1024)?;
 
-// Producer: claim, write, publish
+// Producer: claim batch, write, publish
 if let Some((seq, slots)) = ring.try_claim_slots(10, cursor) {
     for (i, slot) in slots.iter_mut().enumerate() {
         slot.value = i as u64;
     }
-    ring.publish(seq + slots.len() as u64 - 1);
+    ring.publish(seq + slots.len() as u64);
 }
 
-// Consumer: read, advance
+// Consumer: read batch, advance
 let slots = ring.get_read_batch(0, 10);
-ring.update_consumer(9);
+ring.update_consumer(10);
+```
+
+### Per-Event API (416 M/s)
+
+```rust
+use kaos::disruptor::{RingBuffer, Slot8, FastProducer};
+
+let ring = Arc::new(RingBuffer::<Slot8>::new(1024)?);
+let mut producer = FastProducer::new(ring.clone());
+
+// Publish with in-place mutation
+producer.publish(|slot| {
+    slot.value = 42;
+});
 ```
 
 ## Architecture

@@ -19,60 +19,49 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Aeron Benchmark - Comparing with Kaos RUDP
+ * Aeron Benchmark
  * 
  * Run with: jbang AeronBench.java
  */
 public class AeronBench {
     
-    private static final int MESSAGE_LENGTH = 64;  // Match kaos-rudp benchmark
     private static final int TEST_DURATION_SECS = 10;
     private static final int FRAGMENT_COUNT_LIMIT = 256;
     
-    // Aeron channels
     private static final String IPC_CHANNEL = CommonContext.IPC_CHANNEL;
     private static final String UDP_CHANNEL = "aeron:udp?endpoint=localhost:20121";
     private static final int STREAM_ID = 1001;
     
     public static void main(String[] args) throws Exception {
         System.out.println("\n╔═══════════════════════════════════════════╗");
-        System.out.println("║  Aeron Benchmark - Java Reference          ║");
+        System.out.println("║  Aeron Benchmark                           ║");
         System.out.println("╚═══════════════════════════════════════════╝\n");
         
-        System.out.println("Configuration:");
-        System.out.println("  Message size:  " + MESSAGE_LENGTH + " bytes");
-        System.out.println("  Duration:      " + TEST_DURATION_SECS + "s\n");
-        
-        // Run IPC benchmark (shared memory - fastest)
         System.out.println("═══════════════════════════════════════════");
-        System.out.println("  TEST 1: IPC (Shared Memory)");
+        System.out.println("  IPC 8-byte");
         System.out.println("═══════════════════════════════════════════\n");
-        runBenchmark(IPC_CHANNEL, "IPC");
+        runBenchmark(IPC_CHANNEL, "IPC-8B", 8);
         
-        Thread.sleep(2000);  // Cooldown
+        Thread.sleep(2000);
         
-        // Run UDP benchmark (comparable to kaos-rudp)
         System.out.println("\n═══════════════════════════════════════════");
-        System.out.println("  TEST 2: UDP (localhost)");
+        System.out.println("  IPC 64-byte");
         System.out.println("═══════════════════════════════════════════\n");
-        runBenchmark(UDP_CHANNEL, "UDP");
+        runBenchmark(IPC_CHANNEL, "IPC-64B", 64);
         
-        // Summary
+        Thread.sleep(2000);
+        
         System.out.println("\n═══════════════════════════════════════════");
-        System.out.println("  COMPARISON (macOS localhost):");
-        System.out.println("  ─────────────────────────────────────────");
-        System.out.println("  Aeron IPC:   ~22 M/s (shared memory)");
-        System.out.println("  kaos-rudp:   ~2.85 M/s (UDP) ← 56% faster!");
-        System.out.println("  Aeron UDP:   ~1.8 M/s (UDP)");
+        System.out.println("  UDP 64-byte");
         System.out.println("═══════════════════════════════════════════\n");
+        runBenchmark(UDP_CHANNEL, "UDP-64B", 64);
     }
     
-    private static void runBenchmark(String channel, String label) throws Exception {
+    private static void runBenchmark(String channel, String label, int messageLength) throws Exception {
         final AtomicBoolean running = new AtomicBoolean(true);
         final AtomicLong messagesReceived = new AtomicLong(0);
         final AtomicLong messagesSent = new AtomicLong(0);
         
-        // Configure media driver for low latency
         MediaDriver.Context driverContext = new MediaDriver.Context()
             .threadingMode(ThreadingMode.SHARED)
             .dirDeleteOnStart(true)
@@ -82,53 +71,45 @@ public class AeronBench {
              Aeron aeron = Aeron.connect(new Aeron.Context()
                  .aeronDirectoryName(mediaDriver.aeronDirectoryName()))) {
             
-            // Create publication and subscription
             Publication publication = aeron.addPublication(channel, STREAM_ID);
             Subscription subscription = aeron.addSubscription(channel, STREAM_ID);
             
-            // Wait for connection
             int waitCount = 0;
             while (!subscription.isConnected() || !publication.isConnected()) {
                 Thread.sleep(10);
                 waitCount++;
                 if (waitCount > 500) {
-                    System.out.println("  Timeout waiting for connection!");
+                    System.out.println("  Timeout!");
                     return;
                 }
             }
-            System.out.println("  Connected!");
+            System.out.println("  Connected (" + messageLength + " bytes)");
             
-            // Prepare message buffer
-            ByteBuffer byteBuffer = BufferUtil.allocateDirectAligned(MESSAGE_LENGTH, 64);
+            ByteBuffer byteBuffer = BufferUtil.allocateDirectAligned(messageLength, 64);
             UnsafeBuffer buffer = new UnsafeBuffer(byteBuffer);
-            // Fill with test data
-            for (int i = 0; i < MESSAGE_LENGTH; i++) {
+            for (int i = 0; i < messageLength; i++) {
                 buffer.putByte(i, (byte)'X');
             }
             
-            // Fragment handler for receiving
             FragmentHandler fragmentHandler = (DirectBuffer buf, int offset, int length, Header header) -> {
                 messagesReceived.incrementAndGet();
             };
             
-            // Subscriber thread
             Thread subscriber = new Thread(() -> {
                 IdleStrategy idleStrategy = new BusySpinIdleStrategy();
                 while (running.get()) {
                     int fragments = subscription.poll(fragmentHandler, FRAGMENT_COUNT_LIMIT);
                     idleStrategy.idle(fragments);
                 }
-                // Drain remaining
                 while (subscription.poll(fragmentHandler, FRAGMENT_COUNT_LIMIT) > 0) { }
             });
             subscriber.setName("subscriber");
             
-            // Publisher thread
             Thread publisher = new Thread(() -> {
                 IdleStrategy idleStrategy = new BusySpinIdleStrategy();
                 long sent = 0;
                 while (running.get()) {
-                    long result = publication.offer(buffer, 0, MESSAGE_LENGTH);
+                    long result = publication.offer(buffer, 0, messageLength);
                     if (result > 0) {
                         sent++;
                     } else {
@@ -139,12 +120,10 @@ public class AeronBench {
             });
             publisher.setName("publisher");
             
-            // Start benchmark
             long startTime = System.nanoTime();
             subscriber.start();
             publisher.start();
             
-            // Progress reporting
             for (int i = 1; i <= TEST_DURATION_SECS; i++) {
                 Thread.sleep(1000);
                 double elapsed = (System.nanoTime() - startTime) / 1_000_000_000.0;

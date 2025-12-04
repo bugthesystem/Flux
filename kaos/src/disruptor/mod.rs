@@ -25,6 +25,7 @@ pub use single::{
     Consumer,
     ConsumerBuilder,
     EventHandler,
+    FastProducer,
 };
 pub use multi::{
     MpscRingBuffer,
