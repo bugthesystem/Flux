@@ -1,4 +1,4 @@
-# Kaos
+<h1 align="center">KAOS</h1>
 
 <p align="center">
   <img src="logo.svg" alt="Kaos Logo" width="120" height="120"/>
