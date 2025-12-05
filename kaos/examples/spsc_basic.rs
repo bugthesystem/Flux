@@ -2,7 +2,7 @@
 //!
 //! Demonstrates the basic RingBuffer<T> API for single-producer single-consumer.
 
-use kaos::disruptor::{RingBuffer, Slot8, RingBufferEntry};
+use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot8};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
@@ -16,12 +16,12 @@ fn main() {
 
     // Create ring buffer (heap allocation)
     let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
-    
+
     // Or use memory-mapped for better performance:
     // let ring = Arc::new(RingBuffer::<Slot8>::new_mapped(RING_SIZE).unwrap());
 
     let producer_cursor = ring.producer_cursor();
-    
+
     // Producer thread
     let ring_prod = ring.clone();
     let producer = thread::spawn(move || {
@@ -43,7 +43,7 @@ fn main() {
                 sent += slots.len() as u64;
             }
         }
-        
+
         println!("Producer: sent {} messages", sent);
     });
 
@@ -89,4 +89,3 @@ fn main() {
     println!("\nThroughput: {:.2}M msgs/sec", throughput);
     println!("Verified: sum = {} (expected {})", sum, expected);
 }
-

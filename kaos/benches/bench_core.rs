@@ -122,4 +122,3 @@ fn benchmark_allocation(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_throughput, benchmark_allocation);
 criterion_main!(benches);
-

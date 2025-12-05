@@ -3,14 +3,14 @@
 //! Usage: kaos-driver <bind> <peer> [send_path] [recv_path] [--echo]
 //! Features: --features reliable (kaos-rudp), --features uring (io_uring)
 
-use std::net::{ SocketAddr, UdpSocket };
+use kaos_ipc::{Publisher, Subscriber};
+use std::net::{SocketAddr, UdpSocket};
 #[cfg(target_os = "linux")]
 use std::os::fd::AsRawFd;
-use std::sync::atomic::{ AtomicBool, Ordering };
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{ Duration, Instant };
 use std::thread;
-use kaos_ipc::{ Publisher, Subscriber };
+use std::time::{Duration, Instant};
 
 #[cfg(all(target_os = "linux", feature = "uring"))]
 mod uring;
@@ -34,7 +34,11 @@ fn main() {
     }
 
     let bind: SocketAddr = args[1].parse().expect("invalid bind");
-    let peer: SocketAddr = if echo { bind } else { args[2].parse().expect("invalid peer") };
+    let peer: SocketAddr = if echo {
+        bind
+    } else {
+        args[2].parse().expect("invalid peer")
+    };
     let paths: Vec<&str> = args
         .iter()
         .skip(if echo { 2 } else { 3 })
@@ -98,7 +102,7 @@ fn run_reliable(
     peer: SocketAddr,
     from_app: &mut Subscriber,
     to_app: &mut Publisher,
-    running: &Arc<AtomicBool>
+    running: &Arc<AtomicBool>,
 ) {
     use kaos_rudp::ReliableUdpRingBufferTransport;
     let mut transport = ReliableUdpRingBufferTransport::new(bind, peer, 65536).unwrap();
@@ -114,10 +118,7 @@ fn run_reliable(
             }
         }
         if !batch_data.is_empty() {
-            let batch: Vec<&[u8]> = batch_data
-                .iter()
-                .map(|d| d.as_slice())
-                .collect();
+            let batch: Vec<&[u8]> = batch_data.iter().map(|d| d.as_slice()).collect();
             if let Ok(n) = transport.send_batch(&batch) {
                 sent += n as u64;
             }
@@ -143,7 +144,7 @@ fn run_uring(
     socket: &UdpSocket,
     from_app: &mut Subscriber,
     to_app: &mut Publisher,
-    running: &Arc<AtomicBool>
+    running: &Arc<AtomicBool>,
 ) {
     use crate::uring::UringDriver;
     let mut driver = match UringDriver::new(socket) {
@@ -188,7 +189,7 @@ fn run_linux(
     socket: &UdpSocket,
     from_app: &mut Subscriber,
     to_app: &mut Publisher,
-    running: &Arc<AtomicBool>
+    running: &Arc<AtomicBool>,
 ) {
     use std::mem::MaybeUninit;
     let fd = socket.as_raw_fd();
@@ -233,7 +234,7 @@ fn run_linux(
                 recv_msgs.as_mut_ptr(),
                 BATCH_SIZE as u32,
                 libc::MSG_DONTWAIT,
-                std::ptr::null_mut()
+                std::ptr::null_mut(),
             )
         };
         if n > 0 {
@@ -259,7 +260,7 @@ fn run_portable(
     from_app: &mut Subscriber,
     to_app: &mut Publisher,
     running: &Arc<AtomicBool>,
-    echo: bool
+    echo: bool,
 ) {
     let mut buf = [0u8; 8];
     let (mut sent, mut recvd, mut last) = (0u64, 0u64, Instant::now());

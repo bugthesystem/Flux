@@ -1,23 +1,27 @@
-/// RUDP Benchmark - Throughput + Data Integrity
-
-use std::time::Instant;
-use std::sync::{ Arc, atomic::{ AtomicU64, AtomicBool, Ordering } };
-use std::thread;
 use kaos_rudp::ReliableUdpRingBufferTransport;
+use std::sync::{
+    atomic::{AtomicBool, AtomicU64, Ordering},
+    Arc,
+};
+use std::thread;
+/// RUDP Benchmark - Throughput + Data Integrity
+use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("╔═══════════════════════════════════════════╗");
     println!("║  RUDP Benchmark + Data Integrity Check    ║");
     println!("╚═══════════════════════════════════════════╝\n");
 
-    use std::time::{ SystemTime, UNIX_EPOCH };
-    let base_port =
-        20000 +
-        ((SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() % 10000) as u16);
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let base_port = 20000
+        + ((SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            % 10000) as u16);
     let server_addr: std::net::SocketAddr = format!("127.0.0.1:{}", base_port).parse().unwrap();
-    let client_addr: std::net::SocketAddr = format!("127.0.0.1:{}", base_port + 100)
-        .parse()
-        .unwrap();
+    let client_addr: std::net::SocketAddr =
+        format!("127.0.0.1:{}", base_port + 100).parse().unwrap();
 
     let target_messages: u64 = 500_000;
     let window_size = 65536;
@@ -25,7 +29,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let expected_sum: u64 = (0..target_messages).sum();
 
-    println!("Config: {} msgs, batch={}, window={}", target_messages, batch_size, window_size);
+    println!(
+        "Config: {} msgs, batch={}, window={}",
+        target_messages, batch_size, window_size
+    );
     println!("Expected sum: {}\n", expected_sum);
 
     let mut server = ReliableUdpRingBufferTransport::new(server_addr, client_addr, window_size)?;
@@ -91,10 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             batch_bufs[i][0..8].copy_from_slice(&val.to_le_bytes());
         }
 
-        let refs: Vec<&[u8]> = batch_bufs[..count]
-            .iter()
-            .map(|b| &b[..])
-            .collect();
+        let refs: Vec<&[u8]> = batch_bufs[..count].iter().map(|b| &b[..]).collect();
 
         match client.send_batch(&refs) {
             Ok(n) => {
@@ -159,8 +163,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if actual_sum == expected_for_count {
             println!(
                 "\n  ⚠️  PARTIAL: {} of {} received, in-order data correct",
-                actual_count,
-                target_messages
+                actual_count, target_messages
             );
             println!(
                 "     Loss: {:.1}%",

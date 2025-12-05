@@ -7,15 +7,8 @@ use std::sync::Arc;
 use std::thread;
 
 use kaos::disruptor::{
-    ConsumerBuilder,
-    EventHandler,
-    MessageRingBuffer,
-    MessageSlot,
-    ProducerBuilder,
-    RingBuffer,
-    RingBufferConfig,
-    RingBufferEntry,
-    Slot8,
+    ConsumerBuilder, EventHandler, MessageRingBuffer, MessageSlot, ProducerBuilder, RingBuffer,
+    RingBufferConfig, RingBufferEntry, Slot8,
 };
 use kaos::{consume_batch, publish_batch, publish_unrolled};
 
@@ -72,9 +65,7 @@ fn benchmark_api(c: &mut Criterion) {
     group.throughput(Throughput::Elements(API_EVENTS));
     group.sample_size(10);
 
-    group.bench_function("batch", |b| {
-        b.iter(|| bench_batch(API_EVENTS))
-    });
+    group.bench_function("batch", |b| b.iter(|| bench_batch(API_EVENTS)));
 
     group.finish();
 }

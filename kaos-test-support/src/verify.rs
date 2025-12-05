@@ -1,7 +1,7 @@
 //! Data verification utilities for testing correctness.
 
-use std::collections::{ HashMap, HashSet };
-use std::sync::atomic::{ AtomicU64, Ordering };
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 /// Verifies data integrity by checking sequence numbers and content.
@@ -63,7 +63,11 @@ impl DataVerifier {
         if let Some(&expected_hash) = self.expected.lock().unwrap().get(&seq) {
             if hash != expected_hash {
                 self.mismatches.fetch_add(1, Ordering::Relaxed);
-                return VerifyResult::Mismatch { seq, expected: expected_hash, actual: hash };
+                return VerifyResult::Mismatch {
+                    seq,
+                    expected: expected_hash,
+                    actual: hash,
+                };
             }
         }
 
@@ -167,14 +171,12 @@ impl SequenceChecker {
         // Update highest seen
         let mut highest = self.highest_seen.load(Ordering::Relaxed);
         while seq > highest {
-            match
-                self.highest_seen.compare_exchange_weak(
-                    highest,
-                    seq,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed
-                )
-            {
+            match self.highest_seen.compare_exchange_weak(
+                highest,
+                seq,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => {
                     break;
                 }
@@ -200,7 +202,10 @@ impl SequenceChecker {
             let gap_end = seq - 1;
             self.gaps.lock().unwrap().push((gap_start, gap_end));
             self.next_expected.store(seq + 1, Ordering::Relaxed);
-            SequenceStatus::Gap { start: gap_start, end: gap_end }
+            SequenceStatus::Gap {
+                start: gap_start,
+                end: gap_end,
+            }
         }
     }
 
@@ -226,10 +231,7 @@ impl SequenceChecker {
             total_seen: self.total_seen.load(Ordering::Relaxed),
             highest_seen: self.highest_seen.load(Ordering::Relaxed),
             gap_count: gaps.len() as u64,
-            total_missing: gaps
-                .iter()
-                .map(|(s, e)| e - s + 1)
-                .sum(),
+            total_missing: gaps.iter().map(|(s, e)| e - s + 1).sum(),
             out_of_order: self.out_of_order.load(Ordering::Relaxed),
         }
     }
@@ -239,10 +241,7 @@ impl SequenceChecker {
 pub enum SequenceStatus {
     InOrder,
     OutOfOrder,
-    Gap {
-        start: u64,
-        end: u64,
-    },
+    Gap { start: u64, end: u64 },
 }
 
 #[derive(Debug, Clone)]

@@ -8,12 +8,12 @@
 //! - `new_mapped()` - Memory-mapped with mlock (faster, no page faults)
 //! - `new_broadcast()` - Multiple consumer broadcast pattern
 
-use std::ptr;
-use std::sync::atomic::{ AtomicU64, Ordering };
-use std::sync::Arc;
+use crate::disruptor::{RingBufferConfig, RingBufferEntry};
+use crate::error::{KaosError, Result};
 use std::marker::PhantomData;
-use crate::disruptor::{ RingBufferEntry, RingBufferConfig };
-use crate::error::{ KaosError, Result };
+use std::ptr;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 // ============================================================================
 // Shared: Cache-line padded atomic (prevents false sharing)
@@ -37,7 +37,7 @@ impl PaddedAtomicU64 {
         current: u64,
         new: u64,
         success: Ordering,
-        failure: Ordering
+        failure: Ordering,
     ) -> std::result::Result<u64, u64> {
         self.0.compare_exchange_weak(current, new, success, failure)
     }
@@ -97,7 +97,7 @@ impl<T: RingBufferEntry> RingBuffer<T> {
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
                 -1,
-                0
+                0,
             );
             if p == libc::MAP_FAILED {
                 return Err(KaosError::config("mmap failed"));
@@ -177,7 +177,8 @@ impl<T: RingBufferEntry> RingBuffer<T> {
     /// Returns the sequence number, or None if full.
     #[inline]
     pub fn try_publish_with<F>(&self, local_cursor: u64, update: F) -> Option<u64>
-        where F: FnOnce(&mut T)
+    where
+        F: FnOnce(&mut T),
     {
         let next = local_cursor + 1;
         let consumer_seq = self.consumer_cursor.load(Ordering::Relaxed);
@@ -199,10 +200,10 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         &self,
         local_cursor: u64,
         count: usize,
-        update: F
+        update: F,
     ) -> Option<(u64, usize)>
-        where
-            F: FnMut(&mut T, u64) // (slot, sequence)
+    where
+        F: FnMut(&mut T, u64), // (slot, sequence)
     {
         if count == 0 {
             return Some((local_cursor, 0));
@@ -267,7 +268,12 @@ impl<T: RingBufferEntry> RingBuffer<T> {
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
         let idx = (sequence as usize) & self.mask;
-        debug_assert!(idx < self.size, "write_slot: idx {} >= size {}", idx, self.size);
+        debug_assert!(
+            idx < self.size,
+            "write_slot: idx {} >= size {}",
+            idx,
+            self.size
+        );
         std::ptr::write_volatile(self.buffer.add(idx), value);
     }
 
@@ -289,7 +295,12 @@ impl<T: RingBufferEntry> RingBuffer<T> {
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
         let idx = (sequence as usize) & self.mask;
-        debug_assert!(idx < self.size, "read_slot: idx {} >= size {}", idx, self.size);
+        debug_assert!(
+            idx < self.size,
+            "read_slot: idx {} >= size {}",
+            idx,
+            self.size
+        );
         std::ptr::read_volatile(self.buffer.add(idx))
     }
 
@@ -304,7 +315,7 @@ impl<T: RingBufferEntry> Drop for RingBuffer<T> {
             unsafe {
                 libc::munmap(
                     self.buffer as *mut libc::c_void,
-                    self.size * std::mem::size_of::<T>()
+                    self.size * std::mem::size_of::<T>(),
                 );
             }
         }
@@ -342,7 +353,10 @@ impl<T: RingBufferEntry> FastProducer<T> {
 
     /// Try to publish. Returns sequence on success, None if full.
     #[inline]
-    pub fn try_publish<F>(&mut self, update: F) -> Option<u64> where F: FnOnce(&mut T) {
+    pub fn try_publish<F>(&mut self, update: F) -> Option<u64>
+    where
+        F: FnOnce(&mut T),
+    {
         let seq = self.sequence;
 
         if seq > self.sequence_clear_of_consumers {
@@ -361,14 +375,19 @@ impl<T: RingBufferEntry> FastProducer<T> {
         update(slot);
 
         self.sequence += 1;
-        self.ring.producer_cursor.store(self.sequence, Ordering::Release);
+        self.ring
+            .producer_cursor
+            .store(self.sequence, Ordering::Release);
 
         Some(seq)
     }
 
     /// Publish, spinning until space is available.
     #[inline]
-    pub fn publish<F>(&mut self, mut update: F) where F: FnMut(&mut T) {
+    pub fn publish<F>(&mut self, mut update: F)
+    where
+        F: FnMut(&mut T),
+    {
         loop {
             let seq = self.sequence;
 
@@ -377,7 +396,9 @@ impl<T: RingBufferEntry> FastProducer<T> {
                 let slot = unsafe { &mut *self.ring.buffer.add(idx) };
                 update(slot);
                 self.sequence += 1;
-                self.ring.producer_cursor.store(self.sequence, Ordering::Release);
+                self.ring
+                    .producer_cursor
+                    .store(self.sequence, Ordering::Release);
                 return;
             }
 
@@ -390,7 +411,9 @@ impl<T: RingBufferEntry> FastProducer<T> {
                 let slot = unsafe { &mut *self.ring.buffer.add(idx) };
                 update(slot);
                 self.sequence += 1;
-                self.ring.producer_cursor.store(self.sequence, Ordering::Release);
+                self.ring
+                    .producer_cursor
+                    .store(self.sequence, Ordering::Release);
                 return;
             }
 
@@ -401,7 +424,8 @@ impl<T: RingBufferEntry> FastProducer<T> {
     /// Try to publish batch. Returns (start_seq, count) on success.
     #[inline]
     pub fn try_publish_batch<F>(&mut self, count: usize, mut update: F) -> Option<(u64, usize)>
-        where F: FnMut(&mut T, u64)
+    where
+        F: FnMut(&mut T, u64),
     {
         if count == 0 {
             return Some((self.sequence, 0));
@@ -413,9 +437,8 @@ impl<T: RingBufferEntry> FastProducer<T> {
         // Check if we have enough space
         if end_seq > self.sequence_clear_of_consumers {
             let consumer_seq = self.ring.consumer_cursor.load(Ordering::Acquire);
-            let free_slots = (self.ring.size as u64).wrapping_sub(
-                start_seq.wrapping_sub(consumer_seq)
-            );
+            let free_slots =
+                (self.ring.size as u64).wrapping_sub(start_seq.wrapping_sub(consumer_seq));
 
             if free_slots < (count as u64) {
                 return None;
@@ -436,7 +459,9 @@ impl<T: RingBufferEntry> FastProducer<T> {
 
         // Publish
         self.sequence = start_seq + (actual as u64);
-        self.ring.producer_cursor.store(self.sequence, Ordering::Release);
+        self.ring
+            .producer_cursor
+            .store(self.sequence, Ordering::Release);
 
         Some((start_seq, actual))
     }
@@ -504,14 +529,12 @@ impl<T: RingBufferEntry> BroadcastRingBuffer<T> {
             return None;
         }
 
-        match
-            self.producer_sequence.compare_exchange_weak(
-                current,
-                next,
-                Ordering::AcqRel,
-                Ordering::Relaxed
-            )
-        {
+        match self.producer_sequence.compare_exchange_weak(
+            current,
+            next,
+            Ordering::AcqRel,
+            Ordering::Relaxed,
+        ) {
             Ok(_) => {
                 let start = (slot_seq as usize) & self.mask;
                 let end = ((slot_seq + (count as u64)) as usize) & self.mask;
@@ -666,7 +689,11 @@ impl<T: RingBufferEntry> BroadcastRingBuffer<T> {
         let mut messages = Vec::with_capacity(count);
 
         for i in 0..count {
-            let seq = if current == u64::MAX { i as u64 } else { current + 1 + (i as u64) };
+            let seq = if current == u64::MAX {
+                i as u64
+            } else {
+                current + 1 + (i as u64)
+            };
             let slot = &self.buffer[(seq as usize) & self.mask];
             if slot.sequence() != seq {
                 break;
@@ -677,7 +704,8 @@ impl<T: RingBufferEntry> BroadcastRingBuffer<T> {
     }
 
     fn update_gating_sequence(&self) {
-        let min = self.consumer_sequences
+        let min = self
+            .consumer_sequences
             .iter()
             .map(|cs| cs.load(Ordering::Relaxed))
             .min()
@@ -711,15 +739,19 @@ unsafe impl<T: RingBufferEntry> Send for Producer<T> {}
 impl<T: RingBufferEntry> Producer<T> {
     pub fn new(ring_buffer: Arc<BroadcastRingBuffer<T>>) -> Self {
         let ptr = Arc::as_ptr(&ring_buffer) as *mut BroadcastRingBuffer<T>;
-        Self { ring_buffer: ptr, _arc: ring_buffer }
+        Self {
+            ring_buffer: ptr,
+            _arc: ring_buffer,
+        }
     }
 
     pub fn publish_batch<I, F>(
         &mut self,
         items: &[I],
-        writer: F
+        writer: F,
     ) -> std::result::Result<usize, &'static str>
-        where F: Fn(&mut T, u64, &I)
+    where
+        F: Fn(&mut T, u64, &I),
     {
         let rb = unsafe { &mut *self.ring_buffer };
         if let Some((seq, slots)) = rb.try_claim_slots_relaxed(items.len()) {
@@ -742,14 +774,19 @@ pub struct ProducerBuilder<T: RingBufferEntry> {
 
 impl<T: RingBufferEntry> ProducerBuilder<T> {
     pub fn new() -> Self {
-        Self { ring_buffer: None, _phantom: PhantomData }
+        Self {
+            ring_buffer: None,
+            _phantom: PhantomData,
+        }
     }
     pub fn with_ring_buffer(mut self, rb: Arc<BroadcastRingBuffer<T>>) -> Self {
         self.ring_buffer = Some(rb);
         self
     }
     pub fn build(self) -> std::result::Result<Producer<T>, &'static str> {
-        self.ring_buffer.map(Producer::new).ok_or("Ring buffer required")
+        self.ring_buffer
+            .map(Producer::new)
+            .ok_or("Ring buffer required")
     }
 }
 
@@ -765,7 +802,11 @@ pub struct Consumer<T: RingBufferEntry> {
 
 impl<T: RingBufferEntry> Consumer<T> {
     pub fn new(ring_buffer: Arc<BroadcastRingBuffer<T>>, consumer_id: usize) -> Self {
-        Self { ring_buffer, consumer_id, batch_size: 2048 }
+        Self {
+            ring_buffer,
+            consumer_id,
+            batch_size: 2048,
+        }
     }
 
     pub fn with_batch_size(mut self, batch_size: usize) -> Self {
@@ -790,7 +831,7 @@ impl<T: RingBufferEntry> Consumer<T> {
     pub fn run_loop<H: EventHandler<T>>(
         &self,
         handler: &mut H,
-        stop_flag: &std::sync::atomic::AtomicBool
+        stop_flag: &std::sync::atomic::AtomicBool,
     ) {
         while !stop_flag.load(Ordering::Relaxed) {
             if self.process_events(handler) == 0 {
@@ -810,7 +851,12 @@ pub struct ConsumerBuilder<T: RingBufferEntry> {
 
 impl<T: RingBufferEntry> ConsumerBuilder<T> {
     pub fn new() -> Self {
-        Self { ring_buffer: None, consumer_id: 0, batch_size: 2048, _phantom: PhantomData }
+        Self {
+            ring_buffer: None,
+            consumer_id: 0,
+            batch_size: 2048,
+            _phantom: PhantomData,
+        }
     }
     pub fn with_ring_buffer(mut self, rb: Arc<BroadcastRingBuffer<T>>) -> Self {
         self.ring_buffer = Some(rb);
@@ -838,7 +884,7 @@ impl<T: RingBufferEntry> ConsumerBuilder<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::disruptor::{ Slot8, MessageSlot };
+    use crate::disruptor::{MessageSlot, Slot8};
 
     #[test]
     fn test_spsc_heap() {
@@ -873,20 +919,29 @@ mod tests {
 
     #[test]
     fn test_broadcast_creation() {
-        let config = RingBufferConfig::new(1024).unwrap().with_consumers(2).unwrap();
+        let config = RingBufferConfig::new(1024)
+            .unwrap()
+            .with_consumers(2)
+            .unwrap();
         let _ring = BroadcastRingBuffer::<MessageSlot>::new(config).unwrap();
     }
 
     #[test]
     fn test_broadcast_generic_slot8() {
-        let config = RingBufferConfig::new(1024).unwrap().with_consumers(1).unwrap();
+        let config = RingBufferConfig::new(1024)
+            .unwrap()
+            .with_consumers(1)
+            .unwrap();
         let ring = BroadcastRingBuffer::<Slot8>::new(config).unwrap();
         assert!(ring.try_consume_batch(0, 1).is_empty());
     }
 
     #[test]
     fn test_new_broadcast_constructor() {
-        let config = RingBufferConfig::new(1024).unwrap().with_consumers(2).unwrap();
+        let config = RingBufferConfig::new(1024)
+            .unwrap()
+            .with_consumers(2)
+            .unwrap();
         let _ring = RingBuffer::<Slot8>::new_broadcast(config).unwrap();
     }
 

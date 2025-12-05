@@ -4,9 +4,9 @@
 //! Each consumer uses RAII guards that automatically commit reads, ensuring
 //! no data loss even on early exit (e.g., seeing a sentinel value).
 
-use kaos::disruptor::{SpmcRingBuffer, Slot8};
-use std::sync::Arc;
+use kaos::disruptor::{Slot8, SpmcRingBuffer};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
@@ -36,9 +36,9 @@ fn main() {
         let ring_buffer = ring_buffer_producer;
         let mut producer_cursor = 0u64;
         let mut sent = 0u64;
-        
+
         println!("Producer starting...");
-        
+
         // Send numbers 1 to MAX_NUMBER
         for number in 1..=MAX_NUMBER {
             loop {
@@ -80,25 +80,25 @@ fn main() {
         let ring_buffer_clone = ring_buffer.clone();
         let total_sum_clone = total_sum.clone();
         let total_count_clone = total_count.clone();
-        
+
         let handle = thread::spawn(move || {
             let mut local_sum = 0u64;
             let mut local_count = 0u64;
 
             println!("Consumer {} starting...", consumer_id);
-            
+
             loop {
                 // Using try_read() returns a ReadGuard that automatically
                 // commits the slot when dropped - even on early exit!
                 if let Some(guard) = ring_buffer_clone.try_read() {
                     let slot = guard.get();
-                    
+
                     if slot.value == 0 {
                         // Sentinel received - guard drops and commits automatically!
                         // No data loss even though we're breaking early.
                         break;
                     }
-                    
+
                     local_sum += slot.value;
                     local_count += 1;
                     // guard drops here, slot committed
@@ -106,11 +106,14 @@ fn main() {
                     std::hint::spin_loop();
                 }
             }
-            
+
             total_sum_clone.fetch_add(local_sum, Ordering::Relaxed);
             total_count_clone.fetch_add(local_count, Ordering::Relaxed);
-            
-            println!("Consumer {}: Processed {} numbers", consumer_id, local_count);
+
+            println!(
+                "Consumer {}: Processed {} numbers",
+                consumer_id, local_count
+            );
             local_count
         });
         consumer_threads.push(handle);
@@ -159,6 +162,12 @@ fn main() {
     }
 
     let throughput = sent as f64 / duration.as_secs_f64();
-    println!("\n  Performance: {:.2}M numbers/sec", throughput / 1_000_000.0);
-    println!("  Per consumer: {:.2}M numbers/sec\n", throughput / NUM_CONSUMERS as f64 / 1_000_000.0);
+    println!(
+        "\n  Performance: {:.2}M numbers/sec",
+        throughput / 1_000_000.0
+    );
+    println!(
+        "  Per consumer: {:.2}M numbers/sec\n",
+        throughput / NUM_CONSUMERS as f64 / 1_000_000.0
+    );
 }

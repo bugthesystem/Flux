@@ -2,19 +2,16 @@
 //!
 //! cargo run -p kaos-driver --release --example bench -- [ipc|syscall|recv|send]
 
-use kaos_ipc::{ Publisher, Subscriber };
-use std::time::{ Instant, Duration };
+use kaos_ipc::{Publisher, Subscriber};
+use std::fs;
 use std::net::UdpSocket;
 use std::thread;
-use std::fs;
+use std::time::{Duration, Instant};
 
 const N: u64 = 1_000_000;
 
 fn main() {
-    let mode = std::env
-        ::args()
-        .nth(1)
-        .unwrap_or_else(|| "ipc".into());
+    let mode = std::env::args().nth(1).unwrap_or_else(|| "ipc".into());
     match mode.as_str() {
         "ipc" => bench_ipc(),
         "syscall" => bench_syscall(),
@@ -141,5 +138,10 @@ fn two_process_send() {
     }
     let elapsed = start.elapsed();
 
-    println!("Sent {} in {:?} ({:.1} M/s)", N, elapsed, (N as f64) / elapsed.as_secs_f64() / 1e6);
+    println!(
+        "Sent {} in {:?} ({:.1} M/s)",
+        N,
+        elapsed,
+        (N as f64) / elapsed.as_secs_f64() / 1e6
+    );
 }

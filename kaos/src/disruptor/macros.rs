@@ -19,8 +19,7 @@ macro_rules! publish_batch {
         $idx:ident,
         $slot:ident,
         $body:block
-    ) => {
-        {
+    ) => {{
         // Safe: Arc::as_ref gives safe reference
         let ring_ref: &$crate::disruptor::RingBuffer<$slot_type> = $ring.as_ref();
 
@@ -36,8 +35,7 @@ macro_rules! publish_batch {
         } else {
             Err("Ring buffer full")
         }
-        }
-    };
+    }};
 }
 
 /// Consume using slice API - Direct slice access.
@@ -51,8 +49,7 @@ macro_rules! consume_batch {
         $batch_size:expr,
         $slot:ident,
         $body:block
-    ) => {
-        {
+    ) => {{
         let prod_seq = $producer_cursor.load(std::sync::atomic::Ordering::Acquire);
         let available = prod_seq.saturating_sub($consumer_cursor);
 
@@ -71,12 +68,11 @@ macro_rules! consume_batch {
         } else {
             0
         }
-        }
-    };
+    }};
 }
 
 /// Publish with 8x loop unrolling for MessageRingBuffer
-/// 
+///
 /// # Safety (unsafe-perf feature)
 /// Uses `get_unchecked_mut` for max performance.
 /// Safe mode uses bounds-checked indexing.

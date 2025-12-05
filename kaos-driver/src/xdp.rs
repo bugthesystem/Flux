@@ -38,14 +38,10 @@ impl Default for XdpConfig {
 mod inner {
     use super::*;
     use xsk_rs::{
-        config::{ SocketConfig, UmemConfig, QueueSize, Interface, FrameSize },
+        config::{FrameSize, Interface, QueueSize, SocketConfig, UmemConfig},
         socket::Socket,
         umem::Umem,
-        FrameDesc,
-        FillQueue,
-        CompQueue,
-        TxQueue,
-        RxQueue,
+        CompQueue, FillQueue, FrameDesc, RxQueue, TxQueue,
     };
 
     pub struct XdpSocket {
@@ -61,13 +57,11 @@ mod inner {
 
     impl XdpSocket {
         pub fn new(config: XdpConfig) -> io::Result<Self> {
-            let frame_count = NonZeroU32::new(config.frame_count).ok_or_else(||
-                io::Error::other("frame_count must be > 0")
-            )?;
+            let frame_count = NonZeroU32::new(config.frame_count)
+                .ok_or_else(|| io::Error::other("frame_count must be > 0"))?;
             // UMEM config
-            let frame_size = FrameSize::new(config.frame_size).map_err(|e|
-                io::Error::other(format!("FrameSize: {:?}", e))
-            )?;
+            let frame_size = FrameSize::new(config.frame_size)
+                .map_err(|e| io::Error::other(format!("FrameSize: {:?}", e)))?;
 
             let umem_config = UmemConfig::builder()
                 .frame_size(frame_size)
@@ -75,19 +69,18 @@ mod inner {
                 .map_err(|e| io::Error::other(format!("UmemConfig: {:?}", e)))?;
 
             // Create UMEM - takes (config, frame_count, hugetlb)
-            let (umem, frames) = Umem::new(umem_config, frame_count, false).map_err(|e|
-                io::Error::other(format!("Umem: {:?}", e))
-            )?;
+            let (umem, frames) = Umem::new(umem_config, frame_count, false)
+                .map_err(|e| io::Error::other(format!("Umem: {:?}", e)))?;
 
             // Parse interface
-            let iface: Interface = config.interface
+            let iface: Interface = config
+                .interface
                 .parse()
                 .map_err(|e| io::Error::other(format!("Interface: {:?}", e)))?;
 
             // Queue size
-            let q_size = QueueSize::new(config.frame_count).map_err(|e|
-                io::Error::other(format!("QueueSize: {:?}", e))
-            )?;
+            let q_size = QueueSize::new(config.frame_count)
+                .map_err(|e| io::Error::other(format!("QueueSize: {:?}", e)))?;
 
             // Socket config
             let socket_config = SocketConfig::builder()
@@ -96,11 +89,9 @@ mod inner {
                 .build();
 
             // Create socket
-            let (tx_q, rx_q, fq_cq) = (
-                unsafe {
-                    Socket::new(socket_config, &umem, &iface, config.queue_id)
-                }
-            ).map_err(|e| io::Error::other(format!("Socket: {:?}", e)))?;
+            let (tx_q, rx_q, fq_cq) =
+                (unsafe { Socket::new(socket_config, &umem, &iface, config.queue_id) })
+                    .map_err(|e| io::Error::other(format!("Socket: {:?}", e)))?;
 
             // Get fill/comp queues
             let (fill_q, comp_q) = fq_cq.ok_or_else(|| io::Error::other("no fill/comp queues"))?;
@@ -167,7 +158,10 @@ pub struct XdpSocket;
 #[cfg(not(all(target_os = "linux", feature = "xdp")))]
 impl XdpSocket {
     pub fn new(_: XdpConfig) -> io::Result<Self> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "AF_XDP requires Linux"))
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "AF_XDP requires Linux",
+        ))
     }
     pub fn send(&mut self, _: &[u8]) -> io::Result<usize> {
         Ok(0)

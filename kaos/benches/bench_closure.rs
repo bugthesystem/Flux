@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
-use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot8, Slot64};
+use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot64, Slot8};
 
 const RING_SIZE: usize = 1024 * 1024;
 const BATCH_SIZE: usize = 8192;
@@ -66,7 +66,9 @@ fn bench_copy_api<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(e
 // NEW API: Closure-based (in-place mutation, zero-copy)
 // ============================================================================
 
-fn bench_closure_api<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(events: u64) -> u64 {
+fn bench_closure_api<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(
+    events: u64,
+) -> u64 {
     let ring = Arc::new(RingBuffer::<T>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
 
@@ -96,9 +98,11 @@ fn bench_closure_api<T: RingBufferEntry + Copy + Default + Send + Sync + 'static
     while cursor < events {
         let remaining = (events - cursor) as usize;
         let batch = remaining.min(BATCH_SIZE);
-        if let Some((start, count)) = ring_prod.try_publish_batch_with(cursor, batch, |slot, seq| {
-            slot.set_sequence((seq % 5) + 1);
-        }) {
+        if let Some((start, count)) =
+            ring_prod.try_publish_batch_with(cursor, batch, |slot, seq| {
+                slot.set_sequence((seq % 5) + 1);
+            })
+        {
             cursor = start + (count as u64);
         }
     }
@@ -145,5 +149,3 @@ fn benchmark_64b(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_8b, benchmark_64b);
 criterion_main!(benches);
-
-

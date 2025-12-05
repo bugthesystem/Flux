@@ -4,8 +4,8 @@
 //! Both sides use atomic CAS operations, with RAII guards ensuring no data loss.
 
 use kaos::disruptor::{MpmcRingBuffer, Slot8};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
@@ -37,11 +37,11 @@ fn main() {
     for producer_id in 0..NUM_PRODUCERS {
         let ring_buffer_clone = ring_buffer.clone();
         let total_sent_clone = total_sent.clone();
-        
+
         let handle = thread::spawn(move || {
             let start_num = producer_id as u64 * MESSAGES_PER_PRODUCER + 1;
             let end_num = start_num + MESSAGES_PER_PRODUCER;
-            
+
             let mut sent = 0u64;
 
             for number in start_num..end_num {
@@ -59,8 +59,13 @@ fn main() {
             }
 
             total_sent_clone.fetch_add(sent, Ordering::Relaxed);
-            println!("Producer {}: Sent {} numbers (range {} to {})", 
-                     producer_id, sent, start_num, end_num - 1);
+            println!(
+                "Producer {}: Sent {} numbers (range {} to {})",
+                producer_id,
+                sent,
+                start_num,
+                end_num - 1
+            );
             sent
         });
         producer_threads.push(handle);
@@ -72,7 +77,7 @@ fn main() {
         let ring_buffer_clone = ring_buffer.clone();
         let total_sum_clone = total_sum.clone();
         let total_count_clone = total_count.clone();
-        
+
         let handle = thread::spawn(move || {
             let mut local_sum = 0u64;
             let mut local_count = 0u64;
@@ -82,12 +87,12 @@ fn main() {
                 // commits the slot when dropped - even on early exit!
                 if let Some(guard) = ring_buffer_clone.try_read() {
                     let slot = guard.get();
-                    
+
                     if slot.value == 0 {
                         // Sentinel received - guard drops and commits automatically!
                         break;
                     }
-                    
+
                     local_sum += slot.value;
                     local_count += 1;
                     // guard drops here, slot committed
@@ -95,11 +100,14 @@ fn main() {
                     std::hint::spin_loop();
                 }
             }
-            
+
             total_sum_clone.fetch_add(local_sum, Ordering::Relaxed);
             total_count_clone.fetch_add(local_count, Ordering::Relaxed);
-            
-            println!("Consumer {}: Processed {} numbers", consumer_id, local_count);
+
+            println!(
+                "Consumer {}: Processed {} numbers",
+                consumer_id, local_count
+            );
             local_count
         });
         consumer_threads.push(handle);
@@ -168,6 +176,12 @@ fn main() {
     }
 
     let throughput = sent as f64 / duration.as_secs_f64();
-    println!("\n  Performance: {:.2}M numbers/sec", throughput / 1_000_000.0);
-    println!("  Per producer: {:.2}M numbers/sec\n", throughput / NUM_PRODUCERS as f64 / 1_000_000.0);
+    println!(
+        "\n  Performance: {:.2}M numbers/sec",
+        throughput / 1_000_000.0
+    );
+    println!(
+        "  Per producer: {:.2}M numbers/sec\n",
+        throughput / NUM_PRODUCERS as f64 / 1_000_000.0
+    );
 }

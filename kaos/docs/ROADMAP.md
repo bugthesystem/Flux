@@ -1,103 +1,54 @@
 # Kaos Roadmap
 
-## Feature Comparison
+## Status
 
-| Feature | Kaos | Status |
-|---------|------|--------|
-| Lock-free ring buffers | ✅ | 2.5+ Gelem/s |
-| SPSC, MPSC, SPMC, MPMC | ✅ | All patterns |
-| Shared memory IPC | ✅ | 412 M/s, 2.4 ns |
-| Media driver architecture | ✅ | Zero-syscall apps |
-| Reliable UDP (NAK/ACK) | ✅ | In-order delivery |
-| sendmmsg/recvmmsg | ✅ | Linux batched I/O |
-| io_uring | ✅ | Linux async I/O |
-| Metrics/counters | ✅ | Lightweight |
-| Congestion control | ✅ | AIMD algorithm |
-| AF_XDP kernel bypass | ✅ | Compiles, needs test |
-| UDP multicast | ⬜ | Planned |
-| Message archive | ⬜ | Planned |
-| Cluster consensus | ⬜ | Planned |
-
-## Performance (Verified)
-
-| Metric | Kaos | Notes |
-|--------|------|-------|
-| Ring buffer | 2.5 Gelem/s | SPSC hot path |
-| IPC throughput | 412 M/s | Docker emulation |
-| IPC latency | 2.4 ns | Same process |
-| Memory | 0 leaks | All patterns verified |
-
-## What's Left to Compete
-
-### High Priority
-1. **UDP Multicast** - One-to-many pub/sub (key for market data)
-2. **AF_XDP Testing** - Verify on real Linux + NIC
-3. **Archive Module** - Persistent message storage
-
-### Medium Priority
-4. **Flow Control** - Back-pressure signaling
-5. **Loss Recovery** - Improve NAK timing
-6. **Multi-session** - Session multiplexing
-
-### Low Priority
-7. **Cluster Consensus** - Raft/Paxos for HA
-8. **C/C++ Bindings** - FFI for other languages
-9. **Admin Tools** - CLI for monitoring
+| Feature | Status |
+|---------|--------|
+| Lock-free ring buffers (SPSC/MPSC/SPMC/MPMC) | ✅ |
+| Shared memory IPC (mmap) | ✅ |
+| Media driver architecture | ✅ |
+| Reliable UDP (NAK/ACK) | ✅ |
+| Congestion control (AIMD) | ✅ |
+| sendmmsg/recvmmsg (Linux) | ✅ |
+| io_uring (Linux) | ✅ |
+| AF_XDP kernel bypass | ⚠️ Compiles, needs testing |
+| Tracing / Tracy profiler | ✅ |
+| UDP multicast | ⬜ Planned |
+| Message archive | ⬜ Planned |
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      APPLICATION                            │
-│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐        │
-│  │Producer │  │Consumer │  │Producer │  │Consumer │        │
-│  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘        │
-│       │            │            │            │              │
-│       ▼            ▼            ▼            ▼              │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              SHARED MEMORY (mmap)                    │   │
-│  │       Ring Buffers • Zero-Copy Reads • 2.4 ns       │   │
-│  └─────────────────────────────────────────────────────┘   │
+│       Producer ───► Ring Buffer (2.1 G/s) ───► Consumer    │
 └─────────────────────────────────────────────────────────────┘
                               │
-                              ▼
+                    Shared Memory (mmap)
+                              │
 ┌─────────────────────────────────────────────────────────────┐
 │                    MEDIA DRIVER                             │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
-│  │sendmmsg  │  │io_uring  │  │ AF_XDP   │  │  RUDP    │    │
-│  │(batch)   │  │(async)   │  │(bypass)  │  │(reliable)│    │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘    │
+│    sendmmsg  │  io_uring  │  AF_XDP  │  Reliable UDP       │
 └─────────────────────────────────────────────────────────────┘
                               │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      NETWORK                                │
-└─────────────────────────────────────────────────────────────┘
+                           Network
 ```
 
-## Crate Structure
+## Constants Reference
 
-| Crate | Purpose | Lines |
-|-------|---------|-------|
-| kaos | Core ring buffers | ~2000 |
-| kaos-ipc | Shared memory IPC | ~300 |
-| kaos-rudp | Reliable UDP | ~900 |
-| kaos-driver | Media driver | ~400 |
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `SEND_BUFFER_SIZE` | 64KB | Max UDP send buffer |
+| `RECV_PACKET_SIZE` | 2KB | Per-packet receive buffer (> MTU 1500) |
+| `RECV_BATCH_SIZE` | 64 | Packets per recvmmsg syscall |
+| `SOCKET_BUFFER_SIZE` | 8MB | OS socket buffer for throughput |
+| `MAX_MESSAGE_DATA_SIZE` | 1KB | Max payload in MessageSlot |
 
 ## Testing
 
 ```bash
-# Unit tests
-cargo test --workspace
-
-# Benchmarks
-cargo bench -p kaos --bench bench_core
-cargo bench -p kaos --bench bench_trace -- "100M"
-
-# Memory check (macOS)
-leaks --atExit -- ./target/release/examples/spsc_basic
-
-# Docker (AF_XDP)
-docker build -f kaos-driver/Dockerfile.xdp -t kaos-xdp .
-docker run --rm --platform linux/amd64 --entrypoint kaos-bench kaos-xdp
+cargo test --workspace           # Unit tests
+cargo bench -p kaos              # Benchmarks
+cargo clippy --workspace         # Lint
+RUSTFLAGS="--cfg loom" cargo test -p kaos --test loom_ring_buffer --release  # Loom
 ```

@@ -1,8 +1,8 @@
 //! Completion tracking for multi-consumer ring buffers.
 
-use std::sync::atomic::{ AtomicU64, AtomicBool, Ordering };
-use std::marker::PhantomData;
 use super::RingBufferEntry;
+use std::marker::PhantomData;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Maximum slots for completion tracking (64K = 2^16, allows efficient masking)
 const MAX_SLOTS: usize = 65536;
@@ -48,15 +48,11 @@ impl CompletionTracker {
             if current >= producer_cursor {
                 return None;
             }
-            if
-                self.claim_cursor.0
-                    .compare_exchange_weak(
-                        current,
-                        current + 1,
-                        Ordering::Relaxed,
-                        Ordering::Relaxed
-                    )
-                    .is_ok()
+            if self
+                .claim_cursor
+                .0
+                .compare_exchange_weak(current, current + 1, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
             {
                 return Some(current);
             }
@@ -72,10 +68,11 @@ impl CompletionTracker {
             }
             let count = requested.min(available);
             let next = current + (count as u64);
-            if
-                self.claim_cursor.0
-                    .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
-                    .is_ok()
+            if self
+                .claim_cursor
+                .0
+                .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+                .is_ok()
             {
                 return Some((current, count));
             }
@@ -107,15 +104,16 @@ impl CompletionTracker {
             if !self.slot_completed[idx].load(Ordering::Acquire) {
                 return;
             }
-            if
-                self.completed_cursor.0
-                    .compare_exchange_weak(
-                        completed,
-                        completed + 1,
-                        Ordering::Release,
-                        Ordering::Relaxed
-                    )
-                    .is_ok()
+            if self
+                .completed_cursor
+                .0
+                .compare_exchange_weak(
+                    completed,
+                    completed + 1,
+                    Ordering::Release,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
             {
                 self.slot_completed[idx].store(false, Ordering::Relaxed);
             }
@@ -146,7 +144,11 @@ pub struct ReadGuard<'a, T: RingBufferEntry, R: ReadableRing<T>> {
 
 impl<'a, T: RingBufferEntry, R: ReadableRing<T>> ReadGuard<'a, T, R> {
     pub fn new(ring: &'a R, sequence: u64) -> Self {
-        Self { ring, sequence, _marker: PhantomData }
+        Self {
+            ring,
+            sequence,
+            _marker: PhantomData,
+        }
     }
     pub fn get(&self) -> &T {
         self.ring.read_slot_ref(self.sequence)
@@ -168,7 +170,12 @@ pub struct BatchReadGuard<'a, T: RingBufferEntry, R: ReadableRing<T>> {
 
 impl<'a, T: RingBufferEntry, R: ReadableRing<T>> BatchReadGuard<'a, T, R> {
     pub fn new(ring: &'a R, start: u64, count: usize) -> Self {
-        Self { ring, start_sequence: start, count, _marker: PhantomData }
+        Self {
+            ring,
+            start_sequence: start,
+            count,
+            _marker: PhantomData,
+        }
     }
     pub fn count(&self) -> usize {
         self.count
@@ -180,7 +187,8 @@ impl<'a, T: RingBufferEntry, R: ReadableRing<T>> BatchReadGuard<'a, T, R> {
 
 impl<'a, T: RingBufferEntry, R: ReadableRing<T>> Drop for BatchReadGuard<'a, T, R> {
     fn drop(&mut self) {
-        self.ring.complete_read_batch(self.start_sequence, self.count);
+        self.ring
+            .complete_read_batch(self.start_sequence, self.count);
     }
 }
 

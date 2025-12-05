@@ -26,7 +26,10 @@ pub enum LossPattern {
     /// Drop specific sequences
     Specific { sequences: HashSet<u64> },
     /// Drop for a duration after trigger
-    Timed { trigger_seq: u64, duration_packets: usize },
+    Timed {
+        trigger_seq: u64,
+        duration_packets: usize,
+    },
     /// Combination of patterns
     Combined(Vec<LossPattern>),
 }
@@ -82,7 +85,9 @@ impl LossGenerator {
 
     /// Create a generator with random loss probability
     pub fn random(probability: f64) -> Self {
-        Self::new(LossPattern::Random { probability: probability.clamp(0.0, 1.0) })
+        Self::new(LossPattern::Random {
+            probability: probability.clamp(0.0, 1.0),
+        })
     }
 
     /// Create a generator that drops a burst of packets
@@ -140,7 +145,10 @@ impl LossGenerator {
                 }
             }
 
-            LossPattern::Timed { trigger_seq, duration_packets } => {
+            LossPattern::Timed {
+                trigger_seq,
+                duration_packets,
+            } => {
                 if sequence == *trigger_seq {
                     self.timed_triggered = true;
                     self.timed_remaining = *duration_packets;
@@ -241,4 +249,3 @@ mod tests {
         assert!(drops > 800 && drops < 1200, "drops = {}", drops);
     }
 }
-

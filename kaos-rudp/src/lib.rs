@@ -35,12 +35,12 @@
 //! - Sliding window flow control
 //! - Multicast-friendly (no ACKs required)
 
-use std::net::{ SocketAddr, UdpSocket };
-use std::time::{ SystemTime, UNIX_EPOCH };
-use std::cell::RefCell;
-use kaos::disruptor::{ MessageRingBuffer, RingBufferConfig, RingBufferEntry };
+use bytemuck::{Pod, Zeroable};
 use kaos::crc32;
-use bytemuck::{ Pod, Zeroable };
+use kaos::disruptor::{MessageRingBuffer, RingBufferConfig, RingBufferEntry};
+use std::cell::RefCell;
+use std::net::{SocketAddr, UdpSocket};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // Buffer sizes for UDP I/O
 /// Max send buffer (64KB = max UDP payload with some headroom)
@@ -61,18 +61,18 @@ thread_local! {
     static RECV_LENS: RefCell<Vec<usize>> = RefCell::new(vec![0usize; RECV_BATCH_SIZE]);
 }
 
-mod window;
-mod sendmmsg;
 pub mod congestion;
 #[cfg(feature = "driver")]
 pub mod driver;
+mod sendmmsg;
+mod window;
 
-use window::BitmapWindow;
 use congestion::CongestionController;
 pub use congestion::CongestionController as Congestion;
-use kaos::{record_send, record_receive, record_backpressure, record_retransmit};
 #[cfg(feature = "driver")]
 pub use driver::DriverTransport;
+use kaos::{record_backpressure, record_receive, record_retransmit, record_send};
+use window::BitmapWindow;
 
 /// Message types for reliable UDP protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,7 +95,7 @@ pub const FLAG_NO_CRC: u8 = 0x01; // Skip CRC
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct FastHeader {
     pub frame_length: u32, // Total frame length including header (high bit set = FastHeader magic)
-    pub sequence: u32, // Sequence number (32-bit is enough for most use cases)
+    pub sequence: u32,     // Sequence number (32-bit is enough for most use cases)
 }
 
 /// Magic marker in high bit of frame_length to identify FastHeader format
@@ -138,7 +138,10 @@ impl ReliableUdpHeader {
     const SIZE: usize = std::mem::size_of::<Self>();
 
     pub fn new(session_id: u32, sequence: u64, msg_type: MessageType, payload_len: u16) -> Self {
-        let timestamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u32;
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u32;
 
         Self {
             session_id,
@@ -250,7 +253,7 @@ impl ReliableUdpRingBufferTransport {
     pub fn new(
         bind_addr: SocketAddr,
         remote_addr: SocketAddr,
-        window_size: usize
+        window_size: usize,
     ) -> std::io::Result<Self> {
         let socket = UdpSocket::bind(bind_addr)?;
         socket.set_nonblocking(true)?;
@@ -272,14 +275,14 @@ impl ReliableUdpRingBufferTransport {
                     libc::SOL_SOCKET,
                     libc::SO_SNDBUF,
                     &buffer_size as *const i32 as *const libc::c_void,
-                    std::mem::size_of::<i32>() as u32
+                    std::mem::size_of::<i32>() as u32,
                 );
                 libc::setsockopt(
                     fd,
                     libc::SOL_SOCKET,
                     libc::SO_RCVBUF,
                     &buffer_size as *const i32 as *const libc::c_void,
-                    std::mem::size_of::<i32>() as u32
+                    std::mem::size_of::<i32>() as u32,
                 );
             }
         }
@@ -292,9 +295,8 @@ impl ReliableUdpRingBufferTransport {
             .with_consumers(1)
             .map_err(|e| std::io::Error::other(format!("Config error: {}", e)))?;
 
-        let send_window = MessageRingBuffer::new(config).map_err(|e|
-            std::io::Error::other(format!("RingBuffer error: {}", e))
-        )?;
+        let send_window = MessageRingBuffer::new(config)
+            .map_err(|e| std::io::Error::other(format!("RingBuffer error: {}", e)))?;
 
         Ok(Self {
             socket: std::sync::Arc::new(socket),
@@ -316,22 +318,18 @@ impl ReliableUdpRingBufferTransport {
     }
 
     pub fn auto(config: ReliableUdpConfig) -> std::io::Result<Self> {
-        let bind_addr: std::net::SocketAddr = config.local_addr
-            .parse()
-            .map_err(|e|
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("Invalid local_addr: {}", e)
-                )
-            )?;
-        let remote_addr: std::net::SocketAddr = config.remote_addr
-            .parse()
-            .map_err(|e|
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("Invalid remote_addr: {}", e)
-                )
-            )?;
+        let bind_addr: std::net::SocketAddr = config.local_addr.parse().map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid local_addr: {}", e),
+            )
+        })?;
+        let remote_addr: std::net::SocketAddr = config.remote_addr.parse().map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Invalid remote_addr: {}", e),
+            )
+        })?;
         Self::new(bind_addr, remote_addr, config.window_size)
     }
 
@@ -339,7 +337,10 @@ impl ReliableUdpRingBufferTransport {
         // Congestion control: check if we can send
         if !self.congestion.can_send() {
             record_backpressure();
-            return Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Congestion window full"));
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "Congestion window full",
+            ));
         }
 
         let seq = self.next_send_seq;
@@ -375,7 +376,10 @@ impl ReliableUdpRingBufferTransport {
                     Ok(seq)
                 } else {
                     record_backpressure();
-                    Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        "Send window full",
+                    ))
                 }
             });
         };
@@ -392,7 +396,10 @@ impl ReliableUdpRingBufferTransport {
             Ok(seq)
         } else {
             record_backpressure();
-            Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
+            Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "Send window full",
+            ))
         }
     }
 
@@ -441,7 +448,10 @@ impl ReliableUdpRingBufferTransport {
             self.next_send_seq = slot_seq + (actual as u64);
             Ok(actual)
         } else {
-            Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
+            Err(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                "Send window full",
+            ))
         }
     }
 
@@ -452,9 +462,8 @@ impl ReliableUdpRingBufferTransport {
                 let data = &buf[..len];
 
                 if len >= ReliableUdpHeader::SIZE {
-                    if
-                        let Some((header, payload)) =
-                            ReliableUdpHeader::from_packet_with_payload_check(data)
+                    if let Some((header, payload)) =
+                        ReliableUdpHeader::from_packet_with_payload_check(data)
                     {
                         let msg_type = header.msg_type;
                         let seq = header.sequence;
@@ -524,9 +533,7 @@ impl ReliableUdpRingBufferTransport {
         #[cfg(feature = "debug")]
         eprintln!(
             "[NAK-SEND] Sending batch NAK for seq {}-{} to {}",
-            start_seq,
-            end_seq,
-            self.remote_nak_addr
+            start_seq, end_seq, self.remote_nak_addr
         );
         if let Err(e) = self.nak_socket.send_to(&packet, self.remote_nak_addr) {
             #[cfg(feature = "debug")]
@@ -545,7 +552,10 @@ impl ReliableUdpRingBufferTransport {
         let packet = bytemuck::bytes_of(&header);
 
         #[cfg(feature = "debug")]
-        eprintln!("[ACK-SEND] Sending ACK for seq {} to {}", acked_seq, self.remote_nak_addr);
+        eprintln!(
+            "[ACK-SEND] Sending ACK for seq {} to {}",
+            acked_seq, self.remote_nak_addr
+        );
         let _ = self.nak_socket.send_to(packet, self.remote_nak_addr);
     }
 
@@ -560,15 +570,17 @@ impl ReliableUdpRingBufferTransport {
                         continue;
                     }
 
-                    if
-                        let Some((header, _payload)) =
-                            ReliableUdpHeader::from_packet_with_payload_check(&buf[..len])
+                    if let Some((header, _payload)) =
+                        ReliableUdpHeader::from_packet_with_payload_check(&buf[..len])
                     {
                         if header.msg_type == (MessageType::Ack as u8) {
                             let acked = header.sequence;
                             if acked > self.acked_seq {
                                 #[cfg(feature = "debug")]
-                                eprintln!("[ACK-RECV] Received ACK for seq {}, advancing window", acked);
+                                eprintln!(
+                                    "[ACK-RECV] Received ACK for seq {}, advancing window",
+                                    acked
+                                );
                                 // Congestion control: ACK received
                                 self.congestion.on_ack();
                                 self.acked_seq = acked;
@@ -608,15 +620,13 @@ impl ReliableUdpRingBufferTransport {
                         #[cfg(feature = "debug")]
                         eprintln!(
                             "[NAK] Received invalid NAK (too short: {} bytes) from {}",
-                            len,
-                            src
+                            len, src
                         );
                         continue;
                     }
 
-                    if
-                        let Some((header, payload)) =
-                            ReliableUdpHeader::from_packet_with_payload_check(&buf[..len])
+                    if let Some((header, payload)) =
+                        ReliableUdpHeader::from_packet_with_payload_check(&buf[..len])
                     {
                         let msg_type = header.msg_type;
 
@@ -633,27 +643,23 @@ impl ReliableUdpRingBufferTransport {
                             #[cfg(feature = "debug")]
                             eprintln!(
                                 "[NAK] Received batch NAK from {} with {} ranges",
-                                src,
-                                range_count
+                                src, range_count
                             );
 
                             for i in 0..range_count {
                                 let offset = i * 16;
                                 let start_seq = u64::from_le_bytes(
-                                    payload[offset..offset + 8].try_into().unwrap()
+                                    payload[offset..offset + 8].try_into().unwrap(),
                                 );
                                 let end_seq = u64::from_le_bytes(
-                                    payload[offset + 8..offset + 16].try_into().unwrap()
+                                    payload[offset + 8..offset + 16].try_into().unwrap(),
                                 );
                                 let count = (end_seq - start_seq + 1) as usize;
 
                                 #[cfg(feature = "debug")]
                                 eprintln!(
                                     "[NAK] Range {}: seq {}-{} ({} packets)",
-                                    i,
-                                    start_seq,
-                                    end_seq,
-                                    count
+                                    i, start_seq, end_seq, count
                                 );
                                 self.retransmit_batch(start_seq, end_seq);
                                 retransmit_count += count;
@@ -662,8 +668,7 @@ impl ReliableUdpRingBufferTransport {
                             #[cfg(feature = "debug")]
                             eprintln!(
                                 "[NAK] Received single NAK from {} for seq {}",
-                                src,
-                                sequence
+                                src, sequence
                             );
                             self.retransmit(sequence);
                             retransmit_count += 1;
@@ -774,10 +779,9 @@ impl ReliableUdpRingBufferTransport {
                                 break;
                             }
                         }
-                    } else if
-                        first_u32 >= (ReliableUdpHeader::SIZE as u32) &&
-                        first_u32 < 2000 &&
-                        4 + (first_u32 as usize) <= len
+                    } else if first_u32 >= (ReliableUdpHeader::SIZE as u32)
+                        && first_u32 < 2000
+                        && 4 + (first_u32 as usize) <= len
                     {
                         // Parse standard batch format (fast path with 24-byte header)
                         let mut offset = 0;
@@ -791,24 +795,16 @@ impl ReliableUdpRingBufferTransport {
                             offset += 4;
 
                             if pkt_len >= ReliableUdpHeader::SIZE && offset + pkt_len <= len {
-                                if
-                                    let Some(header) = ReliableUdpHeader::from_bytes(
-                                        &data[offset..offset + ReliableUdpHeader::SIZE]
-                                    )
-                                {
+                                if let Some(header) = ReliableUdpHeader::from_bytes(
+                                    &data[offset..offset + ReliableUdpHeader::SIZE],
+                                ) {
                                     let payload_len = header.payload_len as usize;
                                     let flags = header.flags;
                                     if pkt_len >= ReliableUdpHeader::SIZE + payload_len {
-                                        let payload =
-                                            &data
-                                                [
-                                                    offset + ReliableUdpHeader::SIZE..offset +
-                                                        ReliableUdpHeader::SIZE +
-                                                        payload_len
-                                                ];
-                                        let valid =
-                                            (flags & FLAG_NO_CRC) != 0 ||
-                                            header.verify_checksum(payload);
+                                        let payload = &data[offset + ReliableUdpHeader::SIZE
+                                            ..offset + ReliableUdpHeader::SIZE + payload_len];
+                                        let valid = (flags & FLAG_NO_CRC) != 0
+                                            || header.verify_checksum(payload);
                                         if valid {
                                             self.recv_window.insert(header.sequence, payload);
                                         }
@@ -821,19 +817,13 @@ impl ReliableUdpRingBufferTransport {
                         }
                     } else {
                         // Parse single packet format
-                        if
-                            let Some(header) = ReliableUdpHeader::from_bytes(
-                                &data[..ReliableUdpHeader::SIZE]
-                            )
+                        if let Some(header) =
+                            ReliableUdpHeader::from_bytes(&data[..ReliableUdpHeader::SIZE])
                         {
                             let payload_len = header.payload_len as usize;
                             if len >= ReliableUdpHeader::SIZE + payload_len {
-                                let payload =
-                                    &data
-                                        [
-                                            ReliableUdpHeader::SIZE..ReliableUdpHeader::SIZE +
-                                                payload_len
-                                        ];
+                                let payload = &data[ReliableUdpHeader::SIZE
+                                    ..ReliableUdpHeader::SIZE + payload_len];
                                 if header.verify_checksum(payload) {
                                     self.recv_window.insert(header.sequence, payload);
                                 }

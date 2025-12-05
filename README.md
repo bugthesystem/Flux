@@ -213,6 +213,24 @@ cargo valgrind run --example spsc_basic -p kaos --release
 - **Cache-aligned** — 128-byte padding prevents false sharing
 - **Batch operations** — Amortize synchronization overhead
 
+## Glossary
+
+| Term | Meaning |
+|------|---------|
+| **SPSC** | Single Producer, Single Consumer |
+| **MPSC** | Multiple Producers, Single Consumer |
+| **SPMC** | Single Producer, Multiple Consumers |
+| **MPMC** | Multiple Producers, Multiple Consumers |
+| **IPC** | Inter-Process Communication |
+| **mmap** | Memory-mapped file (shared memory) |
+| **RUDP** | Reliable UDP (guaranteed delivery) |
+| **NAK** | Negative Acknowledgment (request retransmit) |
+| **ACK** | Acknowledgment (confirm receipt) |
+| **AIMD** | Additive Increase, Multiplicative Decrease (congestion control) |
+| **io_uring** | Linux async I/O interface |
+| **AF_XDP** | Linux kernel bypass for networking |
+| **sendmmsg** | Linux batched send syscall |
+
 ## License
 
 MIT OR Apache-2.0

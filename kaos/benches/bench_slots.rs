@@ -10,7 +10,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 
-use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot8, Slot16, Slot32, Slot64, MessageSlot};
+use kaos::disruptor::{MessageSlot, RingBuffer, RingBufferEntry, Slot16, Slot32, Slot64, Slot8};
 
 const RING_SIZE: usize = 1024 * 1024;
 const BATCH_SIZE: usize = 8192;
@@ -62,7 +62,9 @@ fn bench_slot<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(event
     events
 }
 
-fn bench_slot_mapped<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(events: u64) -> u64 {
+fn bench_slot_mapped<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(
+    events: u64,
+) -> u64 {
     let ring = Arc::new(RingBuffer::<T>::new_mapped(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
 
@@ -158,4 +160,3 @@ fn benchmark_mapped_slots(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_all_slots, benchmark_mapped_slots);
 criterion_main!(benches);
-

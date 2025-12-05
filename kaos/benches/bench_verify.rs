@@ -14,7 +14,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use kaos::disruptor::{MessageRingBuffer, MessageSlot, RingBuffer, RingBufferConfig, RingBufferEntry, Slot8};
+use kaos::disruptor::{
+    MessageRingBuffer, MessageSlot, RingBuffer, RingBufferConfig, RingBufferEntry, Slot8,
+};
 
 const RING_SIZE: usize = 1024 * 1024;
 const BATCH_SIZE: usize = 8192;
@@ -235,10 +237,10 @@ fn bench_message_slot(events: u64) -> u64 {
 
     let msg = b"Hello, World! This is a test message for benchmarking.";
     let mut sent = 0u64;
-    
+
     // Use raw pointer for producer (same pattern as bench_xor_verify)
     let ring_ptr = Arc::as_ptr(&ring) as *mut MessageRingBuffer;
-    
+
     while sent < events {
         let ring_mut = unsafe { &mut *ring_ptr };
         let batch = ((events - sent) as usize).min(1024);

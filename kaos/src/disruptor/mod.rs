@@ -6,40 +6,27 @@
 //! - `MpscRingBuffer<T>` - Multiple producers, single consumer
 //! - `MpmcRingBuffer<T>` - Full flexibility (slowest)
 
-mod slots;
 mod completion;
-mod single;
-mod multi;
 mod ipc;
 pub mod macros;
+mod multi;
+mod single;
+mod slots;
 
 // Re-exports
-pub use slots::{ Slot8, Slot16, Slot32, Slot64, MessageSlot };
-pub use completion::{ ReadGuard, BatchReadGuard, ReadableRing, CompletionTracker };
-pub use single::{
-    RingBuffer,
-    BroadcastRingBuffer,
-    MessageRingBuffer,
-    Producer,
-    ProducerBuilder,
-    Consumer,
-    ConsumerBuilder,
-    EventHandler,
-    FastProducer,
-};
-pub use multi::{
-    MpscRingBuffer,
-    MpscProducer,
-    MpscProducerBuilder,
-    MpscConsumer,
-    MpscConsumerBuilder,
-    MpscEventHandler,
-    SpmcRingBuffer,
-    MpmcRingBuffer,
-};
+pub use completion::{BatchReadGuard, CompletionTracker, ReadGuard, ReadableRing};
 pub use ipc::SharedRingBuffer;
+pub use multi::{
+    MpmcRingBuffer, MpscConsumer, MpscConsumerBuilder, MpscEventHandler, MpscProducer,
+    MpscProducerBuilder, MpscRingBuffer, SpmcRingBuffer,
+};
+pub use single::{
+    BroadcastRingBuffer, Consumer, ConsumerBuilder, EventHandler, FastProducer, MessageRingBuffer,
+    Producer, ProducerBuilder, RingBuffer,
+};
+pub use slots::{MessageSlot, Slot16, Slot32, Slot64, Slot8};
 
-use crate::error::{ Result, KaosError };
+use crate::error::{KaosError, Result};
 
 /// Default ring buffer size (must be power of 2)
 const DEFAULT_RING_BUFFER_SIZE: usize = 64 * 1024; // 64K slots
@@ -96,10 +83,14 @@ impl RingBufferConfig {
     /// Set the number of consumers
     pub fn with_consumers(mut self, num_consumers: usize) -> Result<Self> {
         if num_consumers == 0 {
-            return Err(KaosError::config("Number of consumers must be greater than 0"));
+            return Err(KaosError::config(
+                "Number of consumers must be greater than 0",
+            ));
         }
         if num_consumers > self.size {
-            return Err(KaosError::config("Number of consumers cannot exceed ring buffer size"));
+            return Err(KaosError::config(
+                "Number of consumers cannot exceed ring buffer size",
+            ));
         }
 
         self.num_consumers = num_consumers;
@@ -126,7 +117,10 @@ mod tests {
 
     #[test]
     fn test_ring_buffer_config_builder() {
-        let config = RingBufferConfig::new(1024).unwrap().with_consumers(4).unwrap();
+        let config = RingBufferConfig::new(1024)
+            .unwrap()
+            .with_consumers(4)
+            .unwrap();
 
         assert_eq!(config.size, 1024);
         assert_eq!(config.num_consumers, 4);

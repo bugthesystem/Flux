@@ -3,8 +3,8 @@
 //! Uses shared memory (kaos-ipc) instead of direct syscalls.
 //! Apps get zero-syscall messaging, driver handles network I/O.
 
-use std::io;
 use kaos_ipc::{Publisher, Subscriber};
+use std::io;
 
 /// Default IPC path for app → driver messages
 const SEND_PATH: &str = "/tmp/kaos-send";
@@ -26,11 +26,11 @@ impl DriverTransport {
         // Step 1: App creates send ring (driver is waiting for this)
         let to_driver = Publisher::create(SEND_PATH, RING_SIZE)?;
         println!("Created send ring: {}", SEND_PATH);
-        
+
         // Step 2: Wait for driver to create recv ring (it will after seeing send)
         let from_driver = Self::wait_for_recv_ring()?;
         println!("Connected to recv ring: {}", RECV_PATH);
-        
+
         Ok(Self {
             to_driver,
             from_driver,
@@ -41,7 +41,7 @@ impl DriverTransport {
     /// Create with custom paths
     pub fn with_paths(send_path: &str, recv_path: &str) -> io::Result<Self> {
         let to_driver = Publisher::create(send_path, RING_SIZE)?;
-        
+
         // Wait for driver
         let from_driver = loop {
             match Subscriber::open(recv_path) {
@@ -49,7 +49,7 @@ impl DriverTransport {
                 Err(_) => std::thread::sleep(std::time::Duration::from_millis(10)),
             }
         };
-        
+
         Ok(Self {
             to_driver,
             from_driver,
@@ -64,7 +64,10 @@ impl DriverTransport {
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        Err(io::Error::new(io::ErrorKind::NotFound, "kaos-driver not running"))
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "kaos-driver not running",
+        ))
     }
 
     /// Send a u64 value (zero syscalls!)
@@ -106,13 +109,12 @@ mod tests {
     #[ignore]
     fn test_driver_transport() {
         let mut transport = DriverTransport::new().expect("Start kaos-driver first");
-        
+
         // Send some values
         for i in 0..100u64 {
             transport.send(i).unwrap();
         }
-        
+
         println!("Sent 100 values via driver");
     }
 }
-

@@ -14,13 +14,12 @@
 //! - `aeron-test-support` - Test harnesses and utilities
 //! - `aeron-system-tests` - End-to-end system tests
 
-pub mod loss;
 pub mod chaos;
+pub mod loss;
 pub mod stress;
 pub mod verify;
 
-pub use loss::{LossGenerator, LossPattern, DropDecision};
-pub use chaos::{ChaosMonkey, ChaosEvent};
-pub use stress::{StressRunner, StressConfig, StressMetrics};
+pub use chaos::{ChaosEvent, ChaosMonkey};
+pub use loss::{DropDecision, LossGenerator, LossPattern};
+pub use stress::{StressConfig, StressMetrics, StressRunner};
 pub use verify::{DataVerifier, SequenceChecker};
-

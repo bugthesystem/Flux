@@ -4,12 +4,8 @@
 //! Should achieve ~80M+ msgs/sec with clean macro-based code.
 
 use kaos::disruptor::{
-    ProducerBuilder,
-    ConsumerBuilder,
-    MessageRingBuffer,
+    ConsumerBuilder, EventHandler, MessageRingBuffer, MessageSlot, ProducerBuilder,
     RingBufferConfig,
-    EventHandler,
-    MessageSlot,
 };
 use kaos::publish_unrolled;
 use std::sync::Arc;
@@ -53,12 +49,10 @@ fn main() {
 
             // USE THE MACRO! publish_unrolled! with 8x unrolling + prefetch
             let start_num = number;
-            match
-                publish_unrolled!(producer, to_send, seq, i, slot, {
-                    slot.sequence = start_num + (i as u64);
-                    slot.data[0..8].copy_from_slice(&(start_num + (i as u64)).to_le_bytes());
-                })
-            {
+            match publish_unrolled!(producer, to_send, seq, i, slot, {
+                slot.sequence = start_num + (i as u64);
+                slot.data[0..8].copy_from_slice(&(start_num + (i as u64)).to_le_bytes());
+            }) {
                 Ok(count) => {
                     sent += count as u64;
                     number += count as u64;
@@ -113,9 +107,7 @@ fn main() {
 
         println!(
             "Consumer: Received {} numbers (first={:?}, last={:?})",
-            handler.count,
-            handler.first_value,
-            handler.last_value
+            handler.count, handler.first_value, handler.last_value
         );
         (handler.sum, handler.count)
     });
@@ -145,7 +137,10 @@ fn main() {
         println!("  ✅ VERIFICATION PASSED!");
         println!("  ✨ All {} numbers transmitted correctly", count);
         println!("  ✨ Sum matches expected value");
-        println!("  ✨ Average = {:.1} (exactly as expected)", calculated_average);
+        println!(
+            "  ✨ Average = {:.1} (exactly as expected)",
+            calculated_average
+        );
         println!();
         println!("  🔥 MACRO-OPTIMIZED - publish_unrolled! macro!");
         println!("  🔥 8x loop unrolling + cache prefetch!");
@@ -160,6 +155,12 @@ fn main() {
     }
 
     let throughput = (count as f64) / duration.as_secs_f64();
-    println!("\n  Performance: {:.2}M numbers/sec", throughput / 1_000_000.0);
-    println!("  Speedup vs non-macro: ~{:.1}x faster!\n", throughput / 21_500_000.0);
+    println!(
+        "\n  Performance: {:.2}M numbers/sec",
+        throughput / 1_000_000.0
+    );
+    println!(
+        "  Speedup vs non-macro: ~{:.1}x faster!\n",
+        throughput / 21_500_000.0
+    );
 }

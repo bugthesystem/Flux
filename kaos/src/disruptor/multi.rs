@@ -4,13 +4,13 @@
 //! - `SpmcRingBuffer<T>` - Single producer, multiple consumers (work-stealing)
 //! - `MpmcRingBuffer<T>` - Multiple producers, multiple consumers
 
-use std::sync::atomic::{ AtomicU64, Ordering };
-use std::sync::Arc;
 use std::marker::PhantomData;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
-use crate::disruptor::completion::{ CompletionTracker, ReadGuard, BatchReadGuard, ReadableRing };
+use crate::disruptor::completion::{BatchReadGuard, CompletionTracker, ReadGuard, ReadableRing};
 use crate::disruptor::RingBufferEntry;
-use crate::error::{ Result, KaosError };
+use crate::error::{KaosError, Result};
 
 // ============================================================================
 // MPSC - Multi-Producer Single Consumer
@@ -32,7 +32,9 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
             return Err(KaosError::config("Size must be power of 2"));
         }
         if size < 64 {
-            return Err(KaosError::config("MPSC ring buffer must be at least 64 slots"));
+            return Err(KaosError::config(
+                "MPSC ring buffer must be at least 64 slots",
+            ));
         }
 
         let buffer = (0..size)
@@ -69,14 +71,12 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
                 return None;
             }
 
-            match
-                self.claim_cursor.compare_exchange_weak(
-                    current,
-                    next,
-                    Ordering::Acquire,
-                    Ordering::Relaxed
-                )
-            {
+            match self.claim_cursor.compare_exchange_weak(
+                current,
+                next,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
                 Ok(_) => {
                     return Some(current);
                 }
@@ -96,7 +96,12 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
         let idx = (sequence as usize) & self.mask;
-        debug_assert!(idx < self.buffer.len(), "MpscRingBuffer::write_slot: idx {} >= len {}", idx, self.buffer.len());
+        debug_assert!(
+            idx < self.buffer.len(),
+            "MpscRingBuffer::write_slot: idx {} >= len {}",
+            idx,
+            self.buffer.len()
+        );
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 
@@ -125,7 +130,12 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
         let idx = (sequence as usize) & self.mask;
-        debug_assert!(idx < self.buffer.len(), "MpscRingBuffer::read_slot: idx {} >= len {}", idx, self.buffer.len());
+        debug_assert!(
+            idx < self.buffer.len(),
+            "MpscRingBuffer::read_slot: idx {} >= len {}",
+            idx,
+            self.buffer.len()
+        );
         std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
     }
 
@@ -182,11 +192,15 @@ unsafe impl<T: RingBufferEntry> Send for MpscProducer<T> {}
 
 impl<T: RingBufferEntry> MpscProducer<T> {
     pub fn new(ring_buffer: Arc<MpscRingBuffer<T>>) -> Self {
-        Self { ring_buffer, _phantom: PhantomData }
+        Self {
+            ring_buffer,
+            _phantom: PhantomData,
+        }
     }
 
     pub fn publish<F>(&self, writer: F) -> std::result::Result<(), &'static str>
-        where F: FnOnce(&mut T)
+    where
+        F: FnOnce(&mut T),
     {
         if let Some(seq) = self.ring_buffer.try_claim(1) {
             let mut value = T::default();
@@ -204,9 +218,10 @@ impl<T: RingBufferEntry> MpscProducer<T> {
     pub fn publish_batch<F>(
         &self,
         count: usize,
-        mut writer: F
+        mut writer: F,
     ) -> std::result::Result<usize, &'static str>
-        where F: FnMut(usize, &mut T)
+    where
+        F: FnMut(usize, &mut T),
     {
         if let Some(start_seq) = self.ring_buffer.try_claim(count) {
             for i in 0..count {
@@ -238,7 +253,9 @@ impl<T: RingBufferEntry> MpscProducerBuilder<T> {
         self
     }
     pub fn build(self) -> std::result::Result<MpscProducer<T>, &'static str> {
-        self.ring_buffer.map(MpscProducer::new).ok_or("Ring buffer not set")
+        self.ring_buffer
+            .map(MpscProducer::new)
+            .ok_or("Ring buffer not set")
     }
 }
 
@@ -255,7 +272,12 @@ pub struct MpscConsumer<T: RingBufferEntry> {
 
 impl<T: RingBufferEntry> MpscConsumer<T> {
     pub fn new(ring_buffer: Arc<MpscRingBuffer<T>>, batch_size: usize) -> Self {
-        Self { ring_buffer, cursor: 0, batch_size, _phantom: PhantomData }
+        Self {
+            ring_buffer,
+            cursor: 0,
+            batch_size,
+            _phantom: PhantomData,
+        }
     }
 
     pub fn process_events<H: MpscEventHandler<T>>(&mut self, handler: &mut H) -> usize {
@@ -286,7 +308,10 @@ pub struct MpscConsumerBuilder<T: RingBufferEntry> {
 
 impl<T: RingBufferEntry> MpscConsumerBuilder<T> {
     pub fn new() -> Self {
-        Self { ring_buffer: None, batch_size: 8192 }
+        Self {
+            ring_buffer: None,
+            batch_size: 8192,
+        }
     }
     pub fn with_ring_buffer(mut self, rb: Arc<MpscRingBuffer<T>>) -> Self {
         self.ring_buffer = Some(rb);
@@ -352,7 +377,12 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
         let idx = (sequence as usize) & self.mask;
-        debug_assert!(idx < self.buffer.len(), "SpmcRingBuffer::write_slot: idx {} >= len {}", idx, self.buffer.len());
+        debug_assert!(
+            idx < self.buffer.len(),
+            "SpmcRingBuffer::write_slot: idx {} >= len {}",
+            idx,
+            self.buffer.len()
+        );
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 
@@ -373,11 +403,9 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
 
     pub fn try_read_batch(&self, max_count: usize) -> Option<BatchReadGuard<'_, T, Self>> {
         let producer_seq = self.producer_cursor.load(Ordering::Relaxed);
-        if
-            let Some((start, count)) = self.completion_tracker.try_claim_batch(
-                max_count,
-                producer_seq
-            )
+        if let Some((start, count)) = self
+            .completion_tracker
+            .try_claim_batch(max_count, producer_seq)
         {
             std::sync::atomic::fence(Ordering::Acquire);
             Some(BatchReadGuard::new(self, start, count))
@@ -407,7 +435,12 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
         let idx = (sequence as usize) & self.mask;
-        debug_assert!(idx < self.buffer.len(), "SpmcRingBuffer::read_slot: idx {} >= len {}", idx, self.buffer.len());
+        debug_assert!(
+            idx < self.buffer.len(),
+            "SpmcRingBuffer::read_slot: idx {} >= len {}",
+            idx,
+            self.buffer.len()
+        );
         std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
     }
 
@@ -495,14 +528,12 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
             return None;
         }
 
-        match
-            self.producer_cursor.compare_exchange_weak(
-                current,
-                next,
-                Ordering::Relaxed,
-                Ordering::Relaxed
-            )
-        {
+        match self.producer_cursor.compare_exchange_weak(
+            current,
+            next,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        ) {
             Ok(_) => Some(current),
             Err(_) => None,
         }
@@ -519,7 +550,12 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
         let idx = (sequence as usize) & self.mask;
-        debug_assert!(idx < self.buffer.len(), "MpmcRingBuffer::write_slot: idx {} >= len {}", idx, self.buffer.len());
+        debug_assert!(
+            idx < self.buffer.len(),
+            "MpmcRingBuffer::write_slot: idx {} >= len {}",
+            idx,
+            self.buffer.len()
+        );
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 
@@ -659,25 +695,23 @@ mod tests {
         let mut consumers = vec![];
         for _ in 0..num_consumers {
             let ring_consumer = ring.clone();
-            consumers.push(
-                thread::spawn(move || {
-                    let mut sum = 0u64;
-                    let mut count = 0u64;
-                    loop {
-                        if let Some(guard) = ring_consumer.try_read() {
-                            let value = guard.get().value;
-                            if value == 0 {
-                                break;
-                            }
-                            sum += value;
-                            count += 1;
-                        } else {
-                            std::hint::spin_loop();
+            consumers.push(thread::spawn(move || {
+                let mut sum = 0u64;
+                let mut count = 0u64;
+                loop {
+                    if let Some(guard) = ring_consumer.try_read() {
+                        let value = guard.get().value;
+                        if value == 0 {
+                            break;
                         }
+                        sum += value;
+                        count += 1;
+                    } else {
+                        std::hint::spin_loop();
                     }
-                    (sum, count)
-                })
-            );
+                }
+                (sum, count)
+            }));
         }
 
         producer.join().unwrap();

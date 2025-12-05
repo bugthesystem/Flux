@@ -2,12 +2,12 @@
 //!
 //! Uses file-backed mmap (MAP_SHARED) that can be shared between processes.
 
-use std::sync::atomic::{ AtomicU64, Ordering };
-use std::path::Path;
-use std::io;
-use std::fs::{ File, OpenOptions };
-use std::os::unix::io::AsRawFd;
 use crate::disruptor::RingBufferEntry;
+use std::fs::{File, OpenOptions};
+use std::io;
+use std::os::unix::io::AsRawFd;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Magic bytes "KAOS_SHR" for file format validation
 const MAGIC: u64 = 0x4b414f535f534852;
@@ -47,17 +47,20 @@ pub struct SharedRingBuffer<T: RingBufferEntry> {
 impl<T: RingBufferEntry> SharedRingBuffer<T> {
     pub fn create<P: AsRef<Path>>(path: P, capacity: usize) -> io::Result<Self> {
         if capacity == 0 || (capacity & (capacity - 1)) != 0 {
-            return Err(
-                io::Error::new(io::ErrorKind::InvalidInput, "Capacity must be a power of 2")
-            );
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Capacity must be a power of 2",
+            ));
         }
 
         let slot_size = std::mem::size_of::<T>();
-        let file_size = HEADER_SIZE.checked_add(
-            capacity
-                .checked_mul(slot_size)
-                .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Size overflow"))?
-        ).ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Size overflow"))?;
+        let file_size = HEADER_SIZE
+            .checked_add(
+                capacity
+                    .checked_mul(slot_size)
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Size overflow"))?,
+            )
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Size overflow"))?;
 
         let file = OpenOptions::new()
             .read(true)
@@ -74,7 +77,7 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_SHARED,
                 file.as_raw_fd(),
-                0
+                0,
             );
             if ptr == libc::MAP_FAILED {
                 return Err(io::Error::last_os_error());
@@ -116,7 +119,10 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
 
         // Bounds check: file must be large enough for header
         if file_size < HEADER_SIZE {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "File too small for header"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "File too small for header",
+            ));
         }
 
         let mmap_ptr = unsafe {
@@ -126,7 +132,7 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
                 libc::PROT_READ | libc::PROT_WRITE,
                 libc::MAP_SHARED,
                 file.as_raw_fd(),
-                0
+                0,
             );
             if ptr == libc::MAP_FAILED {
                 return Err(io::Error::last_os_error());
@@ -146,12 +152,13 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
             unsafe {
                 libc::munmap(mmap_ptr as *mut _, file_size);
             }
-            return Err(
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Version mismatch: expected {}, got {}", VERSION, header.version)
-                )
-            );
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Version mismatch: expected {}, got {}",
+                    VERSION, header.version
+                ),
+            ));
         }
 
         let capacity = header.capacity as usize;
@@ -161,16 +168,14 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
             unsafe {
                 libc::munmap(mmap_ptr as *mut _, file_size);
             }
-            return Err(
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!(
-                        "Slot size mismatch: file has {}, expected {}",
-                        slot_size,
-                        std::mem::size_of::<T>()
-                    )
-                )
-            );
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Slot size mismatch: file has {}, expected {}",
+                    slot_size,
+                    std::mem::size_of::<T>()
+                ),
+            ));
         }
 
         Ok(Self {
@@ -239,7 +244,9 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
 
     pub fn publish(&mut self, seq: u64) {
         std::sync::atomic::fence(Ordering::Release);
-        self.header_mut().producer_seq.store(seq.wrapping_add(1), Ordering::Release);
+        self.header_mut()
+            .producer_seq
+            .store(seq.wrapping_add(1), Ordering::Release);
     }
 
     pub fn try_send(&mut self, data: &[u8]) -> io::Result<u64> {
@@ -320,7 +327,9 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
     pub fn advance_consumer(&mut self, seq: u64) {
         self.local_seq = seq.wrapping_add(1);
         let next = self.local_seq;
-        self.header_mut().consumer_seq.store(next, Ordering::Release);
+        self.header_mut()
+            .consumer_seq
+            .store(next, Ordering::Release);
     }
 }
 

@@ -24,21 +24,22 @@ pub struct ReliableWindowRingBuffer {
 impl ReliableWindowRingBuffer {
     pub fn new(window_size: usize, start_seq: u64) -> Self {
         Self {
-            slots: vec![ReliableWindowSlot {
-                seq: 0,
-                valid: false,
-                data: [0u8; MAX_PACKET_SIZE],
-                len: 0,
-            }; window_size],
+            slots: vec![
+                ReliableWindowSlot {
+                    seq: 0,
+                    valid: false,
+                    data: [0u8; MAX_PACKET_SIZE],
+                    len: 0,
+                };
+                window_size
+            ],
             next_expected_seq: start_seq,
             window_size,
         }
     }
 
     pub fn insert(&mut self, seq: u64, data: &[u8]) -> bool {
-        if
-            seq < self.next_expected_seq ||
-            seq >= self.next_expected_seq + (self.window_size as u64)
+        if seq < self.next_expected_seq || seq >= self.next_expected_seq + (self.window_size as u64)
         {
             // Out of window, drop
             return false;
@@ -71,8 +72,7 @@ impl ReliableWindowRingBuffer {
                 slot.valid = false;
                 let _prev_seq = self.next_expected_seq;
                 self.next_expected_seq += 1;
-                if self.next_expected_seq % (self.window_size as u64) == 0 {
-                }
+                if self.next_expected_seq % (self.window_size as u64) == 0 {}
             } else {
                 break;
             }
@@ -88,14 +88,15 @@ impl ReliableWindowRingBuffer {
                 highest_seq = slot.seq;
             }
         }
-        
+
         if highest_seq <= self.next_expected_seq {
             return;
         }
-        
+
         let reasonable_lookahead = 32;
-        let end_seq = (highest_seq + reasonable_lookahead).min(self.next_expected_seq + (self.window_size as u64));
-        
+        let end_seq = (highest_seq + reasonable_lookahead)
+            .min(self.next_expected_seq + (self.window_size as u64));
+
         let mut seq = self.next_expected_seq;
         let mut missing_start = None;
         while seq < end_seq {
@@ -197,15 +198,13 @@ impl BitmapWindow {
         // Set the bit to mark this sequence as received
         self.set_bit(seq);
 
-        if
-            seq >= self.ring.next_expected_seq &&
-            seq < self.ring.next_expected_seq + (self.ring.window_size as u64)
+        if seq >= self.ring.next_expected_seq
+            && seq < self.ring.next_expected_seq + (self.ring.window_size as u64)
         {
             // Within ring buffer window
             self.ring.insert(seq, data);
-        } else if
-            seq >= self.ring.next_expected_seq &&
-            seq < self.ring.next_expected_seq + (self.max_future_packets as u64)
+        } else if seq >= self.ring.next_expected_seq
+            && seq < self.ring.next_expected_seq + (self.max_future_packets as u64)
         {
             // Within reasonable future window, store for later
             // Check if we already have this packet
@@ -221,7 +220,7 @@ impl BitmapWindow {
     /// Delivers in-order packets to the provided closure.
     /// Processes ring buffer first, then checks future packets.
     pub fn deliver_in_order_with<F: FnMut(&[u8])>(&mut self, mut f: F) {
-        self.ring.deliver_in_order_with(|msg| { f(msg) });
+        self.ring.deliver_in_order_with(|msg| f(msg));
 
         // Check if any future packets can now be moved to ring buffer
         let mut i = 0;
@@ -232,7 +231,7 @@ impl BitmapWindow {
                 self.ring.insert(*seq, data);
                 self.future_packets.remove(i);
                 // Continue processing ring buffer
-                self.ring.deliver_in_order_with(|msg| { f(msg) });
+                self.ring.deliver_in_order_with(|msg| f(msg));
             } else if *seq < self.ring.next_expected_seq {
                 // This packet is too old, remove it
                 self.future_packets.remove(i);

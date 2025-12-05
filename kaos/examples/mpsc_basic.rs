@@ -2,7 +2,9 @@
 //!
 //! Each producer sends 250k numbers, consumer calculates average of all 1M
 
-use kaos::disruptor::{MpscProducerBuilder, MpscConsumerBuilder, MpscRingBuffer, Slot8, MpscEventHandler};
+use kaos::disruptor::{
+    MpscConsumerBuilder, MpscEventHandler, MpscProducerBuilder, MpscRingBuffer, Slot8,
+};
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
@@ -29,7 +31,7 @@ fn main() {
     let mut producer_threads = vec![];
     for producer_id in 0..NUM_PRODUCERS {
         let ring_buffer_clone = ring_buffer.clone();
-        
+
         let handle = thread::spawn(move || {
             let producer = MpscProducerBuilder::new()
                 .with_ring_buffer(ring_buffer_clone)
@@ -39,14 +41,14 @@ fn main() {
             // Each producer sends a sequential range
             let start_num = producer_id as u64 * MESSAGES_PER_PRODUCER + 1;
             let end_num = start_num + MESSAGES_PER_PRODUCER;
-            
+
             let mut sent = 0u64;
             let mut number = start_num;
 
             while number < end_num {
                 let remaining = end_num - number;
                 let to_send = remaining.min(BATCH_SIZE as u64) as usize;
-                
+
                 // Capture number before the batch
                 let start_of_batch = number;
 
@@ -64,8 +66,13 @@ fn main() {
                 }
             }
 
-            println!("Producer {}: Sent {} numbers (range {} to {})", 
-                     producer_id, sent, start_num, end_num - 1);
+            println!(
+                "Producer {}: Sent {} numbers (range {} to {})",
+                producer_id,
+                sent,
+                start_num,
+                end_num - 1
+            );
             sent
         });
 
@@ -98,8 +105,8 @@ fn main() {
             }
         }
 
-        let mut handler = AverageHandler { 
-            sum: 0, 
+        let mut handler = AverageHandler {
+            sum: 0,
             count: 0,
             first_value: None,
             last_value: None,
@@ -110,8 +117,10 @@ fn main() {
             std::hint::spin_loop();
         }
 
-        println!("Consumer: Received {} numbers (first={:?}, last={:?})", 
-                 handler.count, handler.first_value, handler.last_value);
+        println!(
+            "Consumer: Received {} numbers (first={:?}, last={:?})",
+            handler.count, handler.first_value, handler.last_value
+        );
         (handler.sum, handler.count)
     });
 
@@ -120,7 +129,7 @@ fn main() {
     for handle in producer_threads {
         total_sent += handle.join().unwrap();
     }
-    
+
     let (sum, count) = consumer_thread.join().unwrap();
     let duration = start.elapsed();
 
@@ -145,14 +154,20 @@ fn main() {
         println!("  ✅ VERIFICATION PASSED!");
         println!("  ✨ All {} numbers transmitted correctly", count);
         println!("  ✨ Sum matches expected value");
-        println!("  ✨ Average = {:.1} (exactly as expected)", calculated_average);
+        println!(
+            "  ✨ Average = {:.1} (exactly as expected)",
+            calculated_average
+        );
         println!();
         println!("  🚀 MPSC - 4 producers coordinated via CAS!");
         println!("  🚀 MPSC pattern");
     } else {
         println!("  ❌ VERIFICATION FAILED!");
         if count != total_sent {
-            println!("  ⚠️  Count mismatch: got {}, expected {}", count, total_sent);
+            println!(
+                "  ⚠️  Count mismatch: got {}, expected {}",
+                count, total_sent
+            );
         }
         if sum != expected_sum {
             println!("  ⚠️  Sum mismatch: got {}, expected {}", sum, expected_sum);
@@ -160,6 +175,12 @@ fn main() {
     }
 
     let throughput = count as f64 / duration.as_secs_f64();
-    println!("\n  Performance: {:.2}M numbers/sec", throughput / 1_000_000.0);
-    println!("  Per producer: {:.2}M numbers/sec\n", throughput / 1_000_000.0 / NUM_PRODUCERS as f64);
+    println!(
+        "\n  Performance: {:.2}M numbers/sec",
+        throughput / 1_000_000.0
+    );
+    println!(
+        "  Per producer: {:.2}M numbers/sec\n",
+        throughput / 1_000_000.0 / NUM_PRODUCERS as f64
+    );
 }

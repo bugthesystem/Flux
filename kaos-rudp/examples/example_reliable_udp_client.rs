@@ -13,11 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client_addr: SocketAddr = "127.0.0.1:20002".parse()?;
     let server_addr: SocketAddr = "127.0.0.1:20001".parse()?;
 
-    let mut client = ReliableUdpRingBufferTransport::new(
-        client_addr,
-        server_addr,
-        4096,
-    )?;
+    let mut client = ReliableUdpRingBufferTransport::new(client_addr, server_addr, 4096)?;
 
     println!("Client: {}", client_addr);
     println!("Server: {}", server_addr);

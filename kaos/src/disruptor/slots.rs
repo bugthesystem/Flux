@@ -7,7 +7,7 @@
 //! - `MessageSlot` (128 bytes): Variable-length messages with CRC32
 
 use crate::disruptor::{RingBufferEntry, Sequence};
-use crate::error::{Result, KaosError};
+use crate::error::{KaosError, Result};
 use bytemuck::Zeroable;
 
 /// 8-byte slot
@@ -21,11 +21,11 @@ impl RingBufferEntry for Slot8 {
     fn sequence(&self) -> u64 {
         self.value
     }
-    
+
     fn set_sequence(&mut self, seq: u64) {
         self.value = seq;
     }
-    
+
     fn reset(&mut self) {
         self.value = 0;
     }
@@ -43,11 +43,11 @@ impl RingBufferEntry for Slot16 {
     fn sequence(&self) -> u64 {
         self.value1
     }
-    
+
     fn set_sequence(&mut self, seq: u64) {
         self.value1 = seq;
     }
-    
+
     fn reset(&mut self) {
         self.value1 = 0;
         self.value2 = 0;
@@ -68,11 +68,11 @@ impl RingBufferEntry for Slot32 {
     fn sequence(&self) -> u64 {
         self.value1
     }
-    
+
     fn set_sequence(&mut self, seq: u64) {
         self.value1 = seq;
     }
-    
+
     fn reset(&mut self) {
         self.value1 = 0;
         self.value2 = 0;
@@ -92,11 +92,11 @@ impl RingBufferEntry for Slot64 {
     fn sequence(&self) -> u64 {
         self.values[0]
     }
-    
+
     fn set_sequence(&mut self, seq: u64) {
         self.values[0] = seq;
     }
-    
+
     fn reset(&mut self) {
         self.values = [0; 8];
     }
@@ -152,9 +152,11 @@ impl Default for MessageSlot {
 impl MessageSlot {
     pub fn new(data: &[u8]) -> Result<Self> {
         if data.len() > MAX_MESSAGE_DATA_SIZE {
-            return Err(KaosError::invalid_message(
-                format!("Data too large: {} bytes (max: {})", data.len(), MAX_MESSAGE_DATA_SIZE)
-            ));
+            return Err(KaosError::invalid_message(format!(
+                "Data too large: {} bytes (max: {})",
+                data.len(),
+                MAX_MESSAGE_DATA_SIZE
+            )));
         }
         let mut slot = Self::default();
         slot.set_data(data);
@@ -179,13 +181,16 @@ impl MessageSlot {
 
     #[cfg(target_arch = "aarch64")]
     fn calculate_checksum_hardware(data: &[u8]) -> u32 {
-        if data.is_empty() { return 0; }
+        if data.is_empty() {
+            return 0;
+        }
         unsafe {
             let mut crc = 0u32;
             let mut ptr = data.as_ptr();
             let end = ptr.add(data.len());
             while ptr.add(8) <= end {
-                crc = std::arch::aarch64::__crc32cd(crc, std::ptr::read_unaligned(ptr as *const u64));
+                crc =
+                    std::arch::aarch64::__crc32cd(crc, std::ptr::read_unaligned(ptr as *const u64));
                 ptr = ptr.add(8);
             }
             while ptr < end {
@@ -200,10 +205,12 @@ impl MessageSlot {
     #[cfg(not(target_arch = "aarch64"))]
     fn calculate_checksum_hardware(data: &[u8]) -> u32 {
         // FNV-1a constants (well-distributed primes)
-        const FNV_SEED: u32 = 0x9e3779b1;    // Golden ratio derived
-        const FNV_PRIME: u32 = 0x85ebca77;   // FNV prime for 32-bit
-        
-        if data.is_empty() { return 0; }
+        const FNV_SEED: u32 = 0x9e3779b1; // Golden ratio derived
+        const FNV_PRIME: u32 = 0x85ebca77; // FNV prime for 32-bit
+
+        if data.is_empty() {
+            return 0;
+        }
         let mut hash = FNV_SEED;
         for &byte in data {
             hash = hash.wrapping_mul(FNV_PRIME).wrapping_add(byte as u32);
@@ -214,9 +221,15 @@ impl MessageSlot {
 }
 
 impl RingBufferEntry for MessageSlot {
-    fn sequence(&self) -> Sequence { self.sequence }
-    fn set_sequence(&mut self, seq: Sequence) { self.sequence = seq; }
-    fn reset(&mut self) { *self = Self::default(); }
+    fn sequence(&self) -> Sequence {
+        self.sequence
+    }
+    fn set_sequence(&mut self, seq: Sequence) {
+        self.sequence = seq;
+    }
+    fn reset(&mut self) {
+        *self = Self::default();
+    }
 }
 
 #[cfg(test)]

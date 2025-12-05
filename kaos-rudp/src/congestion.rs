@@ -51,7 +51,7 @@ impl CongestionController {
     #[inline]
     pub fn on_ack(&mut self) {
         self.in_flight = self.in_flight.saturating_sub(1);
-        
+
         if self.window < self.ssthresh {
             // Slow start: exponential increase
             self.window = (self.window + 1).min(self.max_window);
@@ -81,13 +81,19 @@ impl CongestionController {
     }
 
     /// Get current window
-    pub fn window_size(&self) -> u32 { self.window }
+    pub fn window_size(&self) -> u32 {
+        self.window
+    }
 
     /// Get packets in flight
-    pub fn in_flight(&self) -> u32 { self.in_flight }
+    pub fn in_flight(&self) -> u32 {
+        self.in_flight
+    }
 
     /// Get RTT estimate
-    pub fn rtt_us(&self) -> u64 { self.rtt_us }
+    pub fn rtt_us(&self) -> u64 {
+        self.rtt_us
+    }
 }
 
 impl Default for CongestionController {
@@ -103,14 +109,14 @@ mod tests {
     #[test]
     fn test_aimd() {
         let mut cc = CongestionController::new(10, 100);
-        
+
         // Slow start
         for _ in 0..5 {
             cc.on_send();
             cc.on_ack();
         }
         assert!(cc.window > 10);
-        
+
         // Loss
         let before = cc.window;
         std::thread::sleep(Duration::from_millis(2));
@@ -118,4 +124,3 @@ mod tests {
         assert!(cc.window < before);
     }
 }
-

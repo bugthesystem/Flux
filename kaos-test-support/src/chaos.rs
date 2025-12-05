@@ -9,22 +9,13 @@ use std::time::Duration;
 #[derive(Debug, Clone)]
 pub enum ChaosEvent {
     /// Delay processing by a random amount
-    Delay {
-        min_us: u64,
-        max_us: u64,
-    },
+    Delay { min_us: u64, max_us: u64 },
     /// Corrupt a byte at a random position
-    CorruptByte {
-        position: Option<usize>,
-    },
+    CorruptByte { position: Option<usize> },
     /// Corrupt multiple bytes
-    CorruptBytes {
-        count: usize,
-    },
+    CorruptBytes { count: usize },
     /// Truncate data to a random length
-    Truncate {
-        min_len: usize,
-    },
+    Truncate { min_len: usize },
     /// Duplicate the data
     Duplicate,
     /// Reorder (swap with next)
@@ -84,7 +75,9 @@ impl ChaosMonkey {
 
     /// Create a mild chaos monkey for basic testing
     pub fn mild() -> Self {
-        Self::new().with_delay_probability(0.01).with_corruption_probability(0.001)
+        Self::new()
+            .with_delay_probability(0.01)
+            .with_corruption_probability(0.001)
     }
 
     pub fn with_delay_probability(mut self, prob: f64) -> Self {

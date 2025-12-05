@@ -16,10 +16,10 @@
 //! }
 //! ```
 
-use std::path::Path;
-use std::io;
 use kaos::disruptor::{SharedRingBuffer, Slot8};
-use kaos::{record_send, record_receive};
+use kaos::{record_receive, record_send};
+use std::io;
+use std::path::Path;
 
 /// Publisher (producer) - creates the shared memory file
 pub struct Publisher {
@@ -28,7 +28,9 @@ pub struct Publisher {
 
 impl Publisher {
     pub fn create<P: AsRef<Path>>(path: P, capacity: usize) -> io::Result<Self> {
-        Ok(Self { inner: SharedRingBuffer::create(path, capacity)? })
+        Ok(Self {
+            inner: SharedRingBuffer::create(path, capacity)?,
+        })
     }
 
     /// Send a u64 value (returns sequence number)
@@ -57,7 +59,9 @@ pub struct Subscriber {
 
 impl Subscriber {
     pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
-        Ok(Self { inner: SharedRingBuffer::open(path)? })
+        Ok(Self {
+            inner: SharedRingBuffer::open(path)?,
+        })
     }
 
     /// Try to receive one message (non-blocking, for polling)
@@ -119,9 +123,14 @@ mod tests {
         // Interleave send/receive to avoid deadlock (single thread)
         while count < N {
             // Send batch
-            while sent < N && pub_.send(sent).is_ok() { sent += 1; }
+            while sent < N && pub_.send(sent).is_ok() {
+                sent += 1;
+            }
             // Receive batch
-            while let Some(val) = sub.try_receive() { sum += val; count += 1; }
+            while let Some(val) = sub.try_receive() {
+                sum += val;
+                count += 1;
+            }
         }
 
         assert_eq!(count, N);

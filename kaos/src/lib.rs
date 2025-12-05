@@ -1,28 +1,27 @@
 //! Kaos - Lock-free ring buffers
 
+pub mod crc32;
 pub mod disruptor;
 pub mod error;
-pub mod crc32;
 pub mod insights;
 
 // Re-export main components
-pub use disruptor::{ RingBuffer, MessageRingBuffer, RingBufferConfig, MessageSlot };
-pub use error::{ Result, KaosError };
+pub use disruptor::{MessageRingBuffer, MessageSlot, RingBuffer, RingBufferConfig};
+pub use error::{KaosError, Result};
 pub use insights::{
-    record_send,
-    record_receive,
-    record_backpressure,
-    record_retransmit,
-    init_tracy,
+    init_tracy, record_backpressure, record_receive, record_retransmit, record_send,
 };
 
 #[cfg(test)]
 mod tests {
-    use crate::disruptor::{ MessageRingBuffer, RingBufferConfig, MessageSlot, RingBufferEntry };
+    use crate::disruptor::{MessageRingBuffer, MessageSlot, RingBufferConfig, RingBufferEntry};
 
     #[test]
     fn test_message_ring_buffer_creation() {
-        let config = RingBufferConfig::new(1024).unwrap().with_consumers(1).unwrap();
+        let config = RingBufferConfig::new(1024)
+            .unwrap()
+            .with_consumers(1)
+            .unwrap();
         let ring_buffer = MessageRingBuffer::new(config);
         assert!(ring_buffer.is_ok());
     }
@@ -36,7 +35,10 @@ mod tests {
 
     #[test]
     fn test_batch_operations() {
-        let config = RingBufferConfig::new(1024).unwrap().with_consumers(1).unwrap();
+        let config = RingBufferConfig::new(1024)
+            .unwrap()
+            .with_consumers(1)
+            .unwrap();
         let mut ring_buffer = MessageRingBuffer::new(config).unwrap();
 
         // Send batch

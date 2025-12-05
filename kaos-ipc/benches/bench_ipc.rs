@@ -1,11 +1,11 @@
 //! kaos-ipc benchmarks - IPC throughput tests
 
-use criterion::{ black_box, criterion_group, criterion_main, Criterion, Throughput };
-use kaos_ipc::{ Publisher, Subscriber, Slot8 };
-use std::sync::atomic::{ AtomicBool, AtomicU64, Ordering };
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use kaos_ipc::{Publisher, Slot8, Subscriber};
+use std::fs;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::fs;
 
 const RING_SIZE: usize = 64 * 1024;
 
@@ -122,25 +122,23 @@ fn bench_trace_events(c: &mut Criterion) {
                 let mut local = [0u64; 5];
                 let mut received = 0u64;
                 while received < TOTAL_EVENTS && running_sub.load(Ordering::Relaxed) {
-                    received += sub_handle.receive(|slot| {
-                        match slot.value {
-                            EVENT_CLICK => {
-                                local[0] += 1;
-                            }
-                            EVENT_SCROLL => {
-                                local[1] += 1;
-                            }
-                            EVENT_PAGEVIEW => {
-                                local[2] += 1;
-                            }
-                            EVENT_PURCHASE => {
-                                local[3] += 1;
-                            }
-                            EVENT_LOGIN => {
-                                local[4] += 1;
-                            }
-                            _ => {}
+                    received += sub_handle.receive(|slot| match slot.value {
+                        EVENT_CLICK => {
+                            local[0] += 1;
                         }
+                        EVENT_SCROLL => {
+                            local[1] += 1;
+                        }
+                        EVENT_PAGEVIEW => {
+                            local[2] += 1;
+                        }
+                        EVENT_PURCHASE => {
+                            local[3] += 1;
+                        }
+                        EVENT_LOGIN => {
+                            local[4] += 1;
+                        }
+                        _ => {}
                     }) as u64;
                 }
                 for i in 0..5 {
@@ -153,10 +151,7 @@ fn bench_trace_events(c: &mut Criterion) {
             running.store(false, Ordering::SeqCst);
             subscriber.join().unwrap();
 
-            let total: u64 = counts
-                .iter()
-                .map(|c| c.load(Ordering::Relaxed))
-                .sum();
+            let total: u64 = counts.iter().map(|c| c.load(Ordering::Relaxed)).sum();
             assert!(total >= (TOTAL_EVENTS * 95) / 100, "Lost >5%");
             cleanup(path);
             TOTAL_EVENTS
@@ -166,5 +161,10 @@ fn bench_trace_events(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_single_msg, bench_sustained, bench_trace_events);
+criterion_group!(
+    benches,
+    bench_single_msg,
+    bench_sustained,
+    bench_trace_events
+);
 criterion_main!(benches);

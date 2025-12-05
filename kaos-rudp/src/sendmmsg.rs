@@ -2,13 +2,13 @@
 //!
 //! 5-10x syscall reduction for bulk UDP.
 
-use std::net::SocketAddr;
 use std::io;
+use std::net::SocketAddr;
 
 #[cfg(target_os = "linux")]
-use std::os::unix::io::AsRawFd;
+use libc::{iovec, mmsghdr, recvmmsg, sendmmsg, sockaddr_in, AF_INET};
 #[cfg(target_os = "linux")]
-use libc::{ sendmmsg, recvmmsg, mmsghdr, iovec, sockaddr_in, AF_INET };
+use std::os::unix::io::AsRawFd;
 
 #[cfg(target_os = "linux")]
 pub struct BatchSender {
@@ -20,7 +20,7 @@ pub struct BatchSender {
 #[cfg(target_os = "linux")]
 impl BatchSender {
     /// Create a new batch sender with the given batch size.
-    /// 
+    ///
     /// # Panics
     /// Panics if `batch_size` is 0.
     pub fn new(batch_size: usize) -> Self {
@@ -37,7 +37,7 @@ impl BatchSender {
         &mut self,
         fd: i32,
         packets: &[&[u8]],
-        addr: &SocketAddr
+        addr: &SocketAddr,
     ) -> io::Result<usize> {
         if packets.is_empty() {
             return Ok(0);
@@ -53,7 +53,10 @@ impl BatchSender {
                 a
             }
             SocketAddr::V6(_) => {
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, "IPv6 unsupported"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "IPv6 unsupported",
+                ));
             }
         };
 
@@ -91,7 +94,7 @@ pub struct BatchReceiver {
 #[cfg(target_os = "linux")]
 impl BatchReceiver {
     /// Create a new batch receiver.
-    /// 
+    ///
     /// # Panics
     /// Panics if `batch_size` or `buffer_size` is 0.
     pub fn new(batch_size: usize, buffer_size: usize) -> Self {
@@ -123,7 +126,7 @@ impl BatchReceiver {
             self.msgvec.as_mut_ptr(),
             count as u32,
             libc::MSG_DONTWAIT,
-            std::ptr::null_mut()
+            std::ptr::null_mut(),
         );
         if r < 0 {
             let e = io::Error::last_os_error();
@@ -147,8 +150,9 @@ impl BatchReceiver {
 #[cfg(target_os = "linux")]
 unsafe impl Send for BatchReceiver {}
 
-// Non-Linux: single-packet fallback
+// Non-Linux: stubs (API compatibility)
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)]
 pub struct BatchSender;
 
 #[cfg(not(target_os = "linux"))]
@@ -157,11 +161,15 @@ impl BatchSender {
         Self
     }
     pub unsafe fn send_batch(&mut self, _: i32, _: &[&[u8]], _: &SocketAddr) -> io::Result<usize> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "sendmmsg: Linux only"))
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "sendmmsg: Linux only",
+        ))
     }
 }
 
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)]
 pub struct BatchReceiver;
 
 #[cfg(not(target_os = "linux"))]
@@ -170,7 +178,10 @@ impl BatchReceiver {
         Self
     }
     pub unsafe fn recv_batch(&mut self, _: i32) -> io::Result<usize> {
-        Err(io::Error::new(io::ErrorKind::Unsupported, "recvmmsg: Linux only"))
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "recvmmsg: Linux only",
+        ))
     }
     pub fn packet(&self, _: usize) -> &[u8] {
         &[]

@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot8, Slot32, Slot64};
+use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot32, Slot64, Slot8};
 
 const RING_SIZE: usize = 1024 * 1024;
 const BATCH_SIZE: usize = 8192;
@@ -27,9 +27,9 @@ const EVENT_PURCHASE: u64 = 4;
 const EVENT_LOGIN: u64 = 5;
 
 // Parameterized event counts
-const EVENTS_100M: u64 = 100_000_000;   // ~2 sec - quick check
-const EVENTS_500M: u64 = 500_000_000;   // ~10 sec - medium
-const EVENTS_1B: u64 = 1_000_000_000;   // ~20 sec - full test
+const EVENTS_100M: u64 = 100_000_000; // ~2 sec - quick check
+const EVENTS_500M: u64 = 500_000_000; // ~10 sec - medium
+const EVENTS_1B: u64 = 1_000_000_000; // ~20 sec - full test
 
 /// Run observability benchmark with specified slot type and event count
 fn run_bench<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(
@@ -37,7 +37,7 @@ fn run_bench<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(
     use_mapped: bool,
 ) -> u64 {
     let events_per_type = total_events / 5;
-    
+
     let ring = if use_mapped {
         Arc::new(RingBuffer::<T>::new_mapped(RING_SIZE).unwrap())
     } else {
@@ -114,7 +114,11 @@ fn run_bench<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(
             if let Some((seq, slots)) = ring_prod.try_claim_slots(batch, cursor) {
                 for slot in slots.iter_mut() {
                     slot.set_sequence(event_type);
-                    event_type = if event_type >= EVENT_LOGIN { EVENT_CLICK } else { event_type + 1 };
+                    event_type = if event_type >= EVENT_LOGIN {
+                        EVENT_CLICK
+                    } else {
+                        event_type + 1
+                    };
                 }
 
                 let next = seq + (slots.len() as u64);
@@ -139,7 +143,11 @@ fn run_bench<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(
 
     let total: u64 = counts.iter().sum();
     let verified = total == total_events && counts.iter().all(|&c| c == events_per_type);
-    assert!(verified, "Data integrity failed! Expected {} per type, got {:?}", events_per_type, counts);
+    assert!(
+        verified,
+        "Data integrity failed! Expected {} per type, got {:?}",
+        events_per_type, counts
+    );
 
     total_events
 }

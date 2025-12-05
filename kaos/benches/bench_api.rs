@@ -4,24 +4,17 @@
 //!
 //! Run: cargo bench --bench bench_api
 
-use criterion::{ criterion_group, criterion_main, BenchmarkId, Criterion, Throughput };
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::hint::black_box;
-use std::sync::atomic::{ AtomicBool, AtomicU64, Ordering };
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 
 use kaos::disruptor::{
-    ConsumerBuilder,
-    EventHandler,
-    MessageRingBuffer,
-    MessageSlot,
-    ProducerBuilder,
-    RingBuffer,
-    RingBufferConfig,
-    RingBufferEntry,
-    Slot8,
+    ConsumerBuilder, EventHandler, MessageRingBuffer, MessageSlot, ProducerBuilder, RingBuffer,
+    RingBufferConfig, RingBufferEntry, Slot8,
 };
-use kaos::{ consume_batch, publish_batch, publish_unrolled };
+use kaos::{consume_batch, publish_batch, publish_unrolled};
 
 const RING_SIZE: usize = 1024 * 1024;
 const BATCH_SIZE: usize = 8192;
@@ -108,10 +101,10 @@ fn bench_macros(events: u64) -> u64 {
     let mut cursor = 0u64;
     while cursor < events {
         let batch = ((events - cursor) as usize).min(BATCH_SIZE);
-        if
-            publish_batch!(Slot8, ring_prod, cursor, batch, i, slot, {
-                slot.value = cursor + (i as u64);
-            }).is_err()
+        if publish_batch!(Slot8, ring_prod, cursor, batch, i, slot, {
+            slot.value = cursor + (i as u64);
+        })
+        .is_err()
         {
             std::hint::spin_loop();
         }
@@ -145,7 +138,10 @@ fn bench_unrolled(events: u64) -> u64 {
         }
     });
 
-    let producer = ProducerBuilder::new().with_ring_buffer(ring_buffer.clone()).build().unwrap();
+    let producer = ProducerBuilder::new()
+        .with_ring_buffer(ring_buffer.clone())
+        .build()
+        .unwrap();
 
     let test_data = b"BENCHMARK_64_BYTES_PAYLOAD_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
     let mut sent = 0u64;
@@ -153,12 +149,10 @@ fn bench_unrolled(events: u64) -> u64 {
     #[allow(unused_mut)]
     let mut producer = producer;
     while sent < events {
-        match
-            publish_unrolled!(producer, BATCH_SIZE, seq, i, slot, {
-                slot.set_sequence(seq + (i as u64));
-                slot.set_data(test_data);
-            })
-        {
+        match publish_unrolled!(producer, BATCH_SIZE, seq, i, slot, {
+            slot.set_sequence(seq + (i as u64));
+            slot.set_data(test_data);
+        }) {
             Ok(count) => {
                 sent += count as u64;
             }
@@ -213,12 +207,10 @@ fn bench_producer_consumer(events: u64) -> u64 {
     let mut sent = 0u64;
 
     while sent < events {
-        match
-            producer.publish_batch(&batch, |event, seq, data| {
-                event.set_sequence(seq);
-                event.set_data(data);
-            })
-        {
+        match producer.publish_batch(&batch, |event, seq, data| {
+            event.set_sequence(seq);
+            event.set_data(data);
+        }) {
             Ok(count) => {
                 sent += count as u64;
             }
@@ -261,9 +253,11 @@ fn benchmark_high_level(c: &mut Criterion) {
     group.throughput(Throughput::Elements(events));
     group.sample_size(10);
 
-    group.bench_function("publish_unrolled", |b| { b.iter(|| bench_unrolled(events)) });
+    group.bench_function("publish_unrolled", |b| b.iter(|| bench_unrolled(events)));
 
-    group.bench_function("producer_consumer", |b| { b.iter(|| bench_producer_consumer(events)) });
+    group.bench_function("producer_consumer", |b| {
+        b.iter(|| bench_producer_consumer(events))
+    });
 
     group.finish();
 }

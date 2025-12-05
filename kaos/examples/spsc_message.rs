@@ -3,7 +3,10 @@
 //! Demonstrates the high-level Producer/Consumer API (LMAX Disruptor style)
 //! Calculate average of 1 to 1,000,000
 
-use kaos::disruptor::{ConsumerBuilder, ProducerBuilder, MessageRingBuffer, RingBufferConfig, EventHandler, MessageSlot};
+use kaos::disruptor::{
+    ConsumerBuilder, EventHandler, MessageRingBuffer, MessageSlot, ProducerBuilder,
+    RingBufferConfig,
+};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
@@ -49,13 +52,13 @@ fn main() {
     let producer_thread = thread::spawn(move || {
         let mut sent = 0u64;
         let mut number = 1u64;
-        
+
         while number <= MAX_NUMBER {
             let remaining = MAX_NUMBER - number + 1;
             let to_send = remaining.min(BATCH_SIZE as u64) as usize;
-            
+
             let batch: Vec<u64> = (number..number + to_send as u64).collect();
-            
+
             match producer.publish_batch(&batch, |event, _seq, &value| {
                 event.sequence = value;
                 event.data[0..8].copy_from_slice(&value.to_le_bytes());
@@ -67,7 +70,7 @@ fn main() {
                 Err(_) => std::thread::yield_now(),
             }
         }
-        
+
         println!("Producer: Sent {} numbers", sent);
         sent
     });
@@ -92,22 +95,24 @@ fn main() {
         }
     }
 
-    let mut handler = AverageHandler { 
-        sum: 0, 
+    let mut handler = AverageHandler {
+        sum: 0,
         count: 0,
         first_value: None,
         last_value: None,
     };
-    
+
     let consumer_thread = thread::spawn(move || {
         // Run until we've processed all numbers
         while handler.count < MAX_NUMBER {
             consumer.process_events(&mut handler);
             std::hint::spin_loop();
         }
-        
-        println!("Consumer: Received {} numbers (first={:?}, last={:?})", 
-                 handler.count, handler.first_value, handler.last_value);
+
+        println!(
+            "Consumer: Received {} numbers (first={:?}, last={:?})",
+            handler.count, handler.first_value, handler.last_value
+        );
         (handler.sum, handler.count)
     });
 
@@ -136,7 +141,10 @@ fn main() {
         println!("  ✅ VERIFICATION PASSED!");
         println!("  ✨ All {} numbers transmitted correctly", count);
         println!("  ✨ Sum matches expected value");
-        println!("  ✨ Average = {:.1} (exactly as expected)", calculated_average);
+        println!(
+            "  ✨ Average = {:.1} (exactly as expected)",
+            calculated_average
+        );
         println!();
         println!("  🎯 CLEAN API - No unsafe code needed!");
         println!("  🎯 LMAX Disruptor pattern");
@@ -151,5 +159,8 @@ fn main() {
     }
 
     let throughput = count as f64 / duration.as_secs_f64();
-    println!("\n  Performance: {:.2}M numbers/sec\n", throughput / 1_000_000.0);
+    println!(
+        "\n  Performance: {:.2}M numbers/sec\n",
+        throughput / 1_000_000.0
+    );
 }

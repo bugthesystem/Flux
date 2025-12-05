@@ -2,7 +2,7 @@
 //!
 //! Demonstrates different slot sizes and their performance characteristics.
 
-use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot8, Slot16, Slot32, Slot64};
+use kaos::disruptor::{RingBuffer, RingBufferEntry, Slot16, Slot32, Slot64, Slot8};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
@@ -83,4 +83,3 @@ fn main() {
     println!("  Slot16:    {:.0}% of Slot32", t16 / t32 * 100.0);
     println!("  Slot64:    {:.0}% of Slot32", t64 / t32 * 100.0);
 }
-

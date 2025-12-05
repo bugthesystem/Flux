@@ -11,10 +11,10 @@
 #[cfg(feature = "driver")]
 fn main() {
     use kaos_ipc::{Publisher, Subscriber};
-    use std::time::{Instant, Duration};
-    use std::net::UdpSocket;
     use std::fs;
+    use std::net::UdpSocket;
     use std::thread;
+    use std::time::{Duration, Instant};
 
     println!("=== Media Driver Network Benchmark ===\n");
 
@@ -31,10 +31,16 @@ fn main() {
             let _ = socket.send(&i.to_le_bytes());
         }
         let elapsed = start.elapsed();
-        
+
         println!("   Messages: {}", N);
-        println!("   Throughput: {:.2} M msg/s", N as f64 / elapsed.as_secs_f64() / 1_000_000.0);
-        println!("   Latency: {:.0} ns/msg (syscall overhead)\n", elapsed.as_nanos() as f64 / N as f64);
+        println!(
+            "   Throughput: {:.2} M msg/s",
+            N as f64 / elapsed.as_secs_f64() / 1_000_000.0
+        );
+        println!(
+            "   Latency: {:.0} ns/msg (syscall overhead)\n",
+            elapsed.as_nanos() as f64 / N as f64
+        );
     }
 
     // Benchmark 2: IPC only (what app thread sees)
@@ -50,30 +56,40 @@ fn main() {
         let start = Instant::now();
         let mut sent = 0u64;
         let mut received = 0u64;
-        
+
         while received < N {
-            while sent < N && pub_.send(sent).is_ok() { sent += 1; }
-            while let Some(_) = sub.try_receive() { received += 1; }
+            while sent < N && pub_.send(sent).is_ok() {
+                sent += 1;
+            }
+            while let Some(_) = sub.try_receive() {
+                received += 1;
+            }
         }
         let elapsed = start.elapsed();
-        
+
         println!("   Messages: {}", N);
-        println!("   Throughput: {:.2} M msg/s", N as f64 / elapsed.as_secs_f64() / 1_000_000.0);
-        println!("   Latency: {:.1} ns/msg (zero syscalls!)\n", elapsed.as_nanos() as f64 / N as f64);
+        println!(
+            "   Throughput: {:.2} M msg/s",
+            N as f64 / elapsed.as_secs_f64() / 1_000_000.0
+        );
+        println!(
+            "   Latency: {:.1} ns/msg (zero syscalls!)\n",
+            elapsed.as_nanos() as f64 / N as f64
+        );
         let _ = fs::remove_file(path);
     }
 
     // Benchmark 3: Full network round-trip via media driver
     println!("3. Full network via media driver:");
     println!("   Checking if drivers are running...");
-    
+
     let send_path = "/tmp/kaos-send";
     let recv_path = "/tmp/kaos-recv";
-    
+
     // Clean up old files
     let _ = fs::remove_file(send_path);
     let _ = fs::remove_file(recv_path);
-    
+
     // Create send ring (driver will detect this)
     let mut to_driver = match Publisher::create(send_path, 64 * 1024) {
         Ok(p) => p,
@@ -83,7 +99,7 @@ fn main() {
         }
     };
     println!("   Created: {}", send_path);
-    
+
     // Wait for driver to create recv ring
     println!("   Waiting for driver to create recv ring...");
     let mut from_driver = None;
@@ -94,7 +110,7 @@ fn main() {
         }
         thread::sleep(Duration::from_millis(100));
     }
-    
+
     let mut from_driver = match from_driver {
         Some(s) => {
             println!("   Connected: {}", recv_path);
@@ -112,34 +128,40 @@ fn main() {
     // Send messages and measure
     const N: u64 = 100_000;
     println!("   Sending {} messages through network...", N);
-    
+
     let start = Instant::now();
     let mut sent = 0u64;
     let mut received = 0u64;
     let timeout = Duration::from_secs(10);
-    
+
     while received < N && start.elapsed() < timeout {
         // Send
-        while sent < N && to_driver.send(sent).is_ok() { 
-            sent += 1; 
+        while sent < N && to_driver.send(sent).is_ok() {
+            sent += 1;
         }
         // Receive
-        while let Some(_) = from_driver.try_receive() { 
-            received += 1; 
+        while let Some(_) = from_driver.try_receive() {
+            received += 1;
         }
-        
+
         if sent >= N && received == 0 {
             thread::sleep(Duration::from_millis(10));
         }
     }
-    
+
     let elapsed = start.elapsed();
-    
+
     if received > 0 {
         println!("   Sent: {}, Received: {}", sent, received);
         println!("   Time: {:?}", elapsed);
-        println!("   Throughput: {:.2} M msg/s", received as f64 / elapsed.as_secs_f64() / 1_000_000.0);
-        println!("   Round-trip: {:.0} ns/msg\n", elapsed.as_nanos() as f64 / received as f64);
+        println!(
+            "   Throughput: {:.2} M msg/s",
+            received as f64 / elapsed.as_secs_f64() / 1_000_000.0
+        );
+        println!(
+            "   Round-trip: {:.0} ns/msg\n",
+            elapsed.as_nanos() as f64 / received as f64
+        );
     } else {
         println!("   Sent: {}, but received 0", sent);
         println!("   (Peer driver may not be running or connected)\n");

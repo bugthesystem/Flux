@@ -23,11 +23,14 @@ fn run_rudp_bench(total_events: u64) -> (f64, u64) {
     let recv_cnt = received_count.clone();
 
     let receiver = thread::spawn(move || {
-        let mut transport = ReliableUdpRingBufferTransport::new(server_addr, client_addr, 65536).unwrap();
+        let mut transport =
+            ReliableUdpRingBufferTransport::new(server_addr, client_addr, 65536).unwrap();
         let mut count = 0u64;
         while count < total_events {
             transport.receive_batch_with(64, |data| {
-                if data.len() >= 8 { count += 1; }
+                if data.len() >= 8 {
+                    count += 1;
+                }
             });
         }
         recv_cnt.store(count, Ordering::Release);
@@ -36,7 +39,8 @@ fn run_rudp_bench(total_events: u64) -> (f64, u64) {
     thread::sleep(std::time::Duration::from_millis(10));
     let start = Instant::now();
 
-    let mut transport = ReliableUdpRingBufferTransport::new(client_addr, server_addr, 65536).unwrap();
+    let mut transport =
+        ReliableUdpRingBufferTransport::new(client_addr, server_addr, 65536).unwrap();
     let mut batch_data: [[u8; 8]; 16] = [[0u8; 8]; 16];
     let mut sent = 0u64;
 
@@ -46,16 +50,33 @@ fn run_rudp_bench(total_events: u64) -> (f64, u64) {
             batch_data[i] = (((sent + i as u64) % 5) + 1).to_le_bytes();
         }
         let refs: [&[u8]; 16] = [
-            &batch_data[0], &batch_data[1], &batch_data[2], &batch_data[3],
-            &batch_data[4], &batch_data[5], &batch_data[6], &batch_data[7],
-            &batch_data[8], &batch_data[9], &batch_data[10], &batch_data[11],
-            &batch_data[12], &batch_data[13], &batch_data[14], &batch_data[15],
+            &batch_data[0],
+            &batch_data[1],
+            &batch_data[2],
+            &batch_data[3],
+            &batch_data[4],
+            &batch_data[5],
+            &batch_data[6],
+            &batch_data[7],
+            &batch_data[8],
+            &batch_data[9],
+            &batch_data[10],
+            &batch_data[11],
+            &batch_data[12],
+            &batch_data[13],
+            &batch_data[14],
+            &batch_data[15],
         ];
         match transport.send_batch(&refs[..batch_count]) {
             Ok(n) => sent += n as u64,
-            Err(_) => { transport.process_acks(); std::hint::spin_loop(); }
+            Err(_) => {
+                transport.process_acks();
+                std::hint::spin_loop();
+            }
         }
-        if sent % 10000 == 0 { transport.process_acks(); }
+        if sent % 10000 == 0 {
+            transport.process_acks();
+        }
     }
 
     let timeout = std::time::Duration::from_secs(2);
@@ -108,4 +129,3 @@ fn benchmark_rudp_500k(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_rudp_100k, benchmark_rudp_500k);
 criterion_main!(benches);
-

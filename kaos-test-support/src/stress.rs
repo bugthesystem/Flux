@@ -150,7 +150,8 @@ impl StressCounters {
 
     pub fn record_receive(&self, bytes: usize) {
         self.received.fetch_add(1, Ordering::Relaxed);
-        self.bytes_received.fetch_add(bytes as u64, Ordering::Relaxed);
+        self.bytes_received
+            .fetch_add(bytes as u64, Ordering::Relaxed);
     }
 
     pub fn record_error(&self) {
@@ -218,15 +219,15 @@ impl StressRunner {
 
             while report_counters.is_running() {
                 std::thread::sleep(report_interval);
-                
+
                 let current_sent = report_counters.sent.load(Ordering::Relaxed);
                 let current_received = report_counters.received.load(Ordering::Relaxed);
                 let errors = report_counters.errors.load(Ordering::Relaxed);
-                
+
                 let rate = (current_sent - last_sent) as f64 / report_interval.as_secs_f64();
                 peak_rate = peak_rate.max(rate);
                 last_sent = current_sent;
-                
+
                 let elapsed = start.elapsed();
                 eprintln!(
                     "[{:>5.1}s] sent: {:>10}, recv: {:>10}, rate: {:>8.0}/s, errors: {}",
@@ -242,7 +243,7 @@ impl StressRunner {
                     break;
                 }
             }
-            
+
             peak_rate
         });
 
@@ -252,11 +253,11 @@ impl StressRunner {
         // Stop and collect
         counters.stop();
         let peak_rate = reporter.join().unwrap_or(0.0);
-        
+
         let mut metrics = counters.snapshot();
         metrics.duration = start.elapsed();
         metrics.peak_rate = peak_rate;
-        
+
         metrics
     }
 }
@@ -266,24 +267,57 @@ pub fn print_summary(metrics: &StressMetrics) {
     eprintln!("\n╔══════════════════════════════════════════════════════════════╗");
     eprintln!("║                    STRESS TEST RESULTS                       ║");
     eprintln!("╠══════════════════════════════════════════════════════════════╣");
-    eprintln!("║  Duration:        {:>10.2}s                                ║", metrics.duration.as_secs_f64());
-    eprintln!("║  Messages Sent:   {:>10}                                  ║", metrics.messages_sent);
-    eprintln!("║  Messages Recv:   {:>10}                                  ║", metrics.messages_received);
-    eprintln!("║  Send Rate:       {:>10.0} msg/s                          ║", metrics.send_rate());
-    eprintln!("║  Receive Rate:    {:>10.0} msg/s                          ║", metrics.receive_rate());
-    eprintln!("║  Peak Rate:       {:>10.0} msg/s                          ║", metrics.peak_rate);
-    eprintln!("║  Loss Rate:       {:>10.4}%                               ║", metrics.loss_rate() * 100.0);
-    eprintln!("║  Errors:          {:>10}                                  ║", metrics.errors);
-    eprintln!("║  Throughput:      {:>10.2} MB/s                           ║", metrics.throughput_mbps());
+    eprintln!(
+        "║  Duration:        {:>10.2}s                                ║",
+        metrics.duration.as_secs_f64()
+    );
+    eprintln!(
+        "║  Messages Sent:   {:>10}                                  ║",
+        metrics.messages_sent
+    );
+    eprintln!(
+        "║  Messages Recv:   {:>10}                                  ║",
+        metrics.messages_received
+    );
+    eprintln!(
+        "║  Send Rate:       {:>10.0} msg/s                          ║",
+        metrics.send_rate()
+    );
+    eprintln!(
+        "║  Receive Rate:    {:>10.0} msg/s                          ║",
+        metrics.receive_rate()
+    );
+    eprintln!(
+        "║  Peak Rate:       {:>10.0} msg/s                          ║",
+        metrics.peak_rate
+    );
+    eprintln!(
+        "║  Loss Rate:       {:>10.4}%                               ║",
+        metrics.loss_rate() * 100.0
+    );
+    eprintln!(
+        "║  Errors:          {:>10}                                  ║",
+        metrics.errors
+    );
+    eprintln!(
+        "║  Throughput:      {:>10.2} MB/s                           ║",
+        metrics.throughput_mbps()
+    );
     eprintln!("╚══════════════════════════════════════════════════════════════╝");
-    
+
     // Verdict
     if metrics.errors > 0 {
         eprintln!("\n❌ FAILED: {} errors detected", metrics.errors);
     } else if metrics.loss_rate() > 0.01 {
-        eprintln!("\n⚠️  WARNING: {:.2}% message loss", metrics.loss_rate() * 100.0);
+        eprintln!(
+            "\n⚠️  WARNING: {:.2}% message loss",
+            metrics.loss_rate() * 100.0
+        );
     } else {
-        eprintln!("\n✅ PASSED: No errors, {:.4}% loss", metrics.loss_rate() * 100.0);
+        eprintln!(
+            "\n✅ PASSED: No errors, {:.4}% loss",
+            metrics.loss_rate() * 100.0
+        );
     }
 }
 
@@ -294,11 +328,11 @@ mod tests {
     #[test]
     fn test_stress_counters() {
         let counters = StressCounters::new();
-        
+
         counters.record_send(100);
         counters.record_send(100);
         counters.record_receive(100);
-        
+
         let metrics = counters.snapshot();
         assert_eq!(metrics.messages_sent, 2);
         assert_eq!(metrics.messages_received, 1);
@@ -311,10 +345,9 @@ mod tests {
         metrics.messages_sent = 1000;
         metrics.messages_received = 990;
         metrics.duration = Duration::from_secs(10);
-        
+
         assert!((metrics.send_rate() - 100.0).abs() < 0.1);
         assert!((metrics.receive_rate() - 99.0).abs() < 0.1);
         assert!((metrics.loss_rate() - 0.01).abs() < 0.001);
     }
 }
-
