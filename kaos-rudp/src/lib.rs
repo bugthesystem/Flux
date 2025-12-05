@@ -64,6 +64,7 @@ thread_local! {
 pub mod congestion;
 #[cfg(feature = "driver")]
 pub mod driver;
+pub mod multicast;
 mod sendmmsg;
 mod window;
 
@@ -71,6 +72,7 @@ use congestion::CongestionController;
 pub use congestion::CongestionController as Congestion;
 #[cfg(feature = "driver")]
 pub use driver::DriverTransport;
+pub use multicast::{MulticastSocket, MulticastTransport};
 use kaos::{record_backpressure, record_receive, record_retransmit, record_send};
 use window::BitmapWindow;
 

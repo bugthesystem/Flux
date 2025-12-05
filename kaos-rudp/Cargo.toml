@@ -22,6 +22,7 @@ kaos = { path = "../kaos" }
 kaos-ipc = { path = "../kaos-ipc", optional = true }
 bytemuck = { version = "1.14", features = ["derive"] }
 libc = "0.2"
+socket2 = "0.6.1"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

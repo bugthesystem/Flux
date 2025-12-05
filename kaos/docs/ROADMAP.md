@@ -13,7 +13,7 @@
 | io_uring (Linux) | ✅ |
 | AF_XDP kernel bypass | ⚠️ Compiles, needs testing |
 | Tracing / Tracy profiler | ✅ |
-| UDP multicast | ⬜ Planned |
+| UDP multicast | ✅ |
 | Message archive | ⬜ Planned |
 
 ## Architecture
