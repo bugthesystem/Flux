@@ -19,6 +19,7 @@
 use std::path::Path;
 use std::io;
 use kaos::disruptor::{SharedRingBuffer, Slot8};
+use kaos::{record_send, record_receive};
 
 /// Publisher (producer) - creates the shared memory file
 pub struct Publisher {
@@ -32,12 +33,20 @@ impl Publisher {
 
     /// Send a u64 value (returns sequence number)
     pub fn send(&mut self, value: u64) -> io::Result<u64> {
-        self.inner.try_send(&value.to_le_bytes())
+        let result = self.inner.try_send(&value.to_le_bytes());
+        if result.is_ok() {
+            record_send(8);
+        }
+        result
     }
 
     /// Try to send (non-blocking, returns None if full)
     pub fn try_send(&mut self, data: &[u8]) -> Option<u64> {
-        self.inner.try_send(data).ok()
+        let result = self.inner.try_send(data).ok();
+        if result.is_some() {
+            record_send(data.len() as u64);
+        }
+        result
     }
 }
 
@@ -53,12 +62,20 @@ impl Subscriber {
 
     /// Try to receive one message (non-blocking, for polling)
     pub fn try_receive(&mut self) -> Option<u64> {
-        self.inner.try_receive().map(|slot| slot.value)
+        let result = self.inner.try_receive().map(|slot| slot.value);
+        if result.is_some() {
+            record_receive(8);
+        }
+        result
     }
 
     /// Receive all available messages via callback (batch, faster)
     pub fn receive<F: FnMut(u64)>(&mut self, mut f: F) -> usize {
-        self.inner.receive(|slot| f(slot.value))
+        let count = self.inner.receive(|slot| f(slot.value));
+        if count > 0 {
+            record_receive((count * 8) as u64);
+        }
+        count
     }
 
     /// Number of messages available

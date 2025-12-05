@@ -70,7 +70,7 @@ pub mod driver;
 use window::BitmapWindow;
 use congestion::CongestionController;
 pub use congestion::CongestionController as Congestion;
-use kaos::metrics::METRICS;
+use kaos::{record_send, record_receive, record_backpressure, record_retransmit};
 #[cfg(feature = "driver")]
 pub use driver::DriverTransport;
 
@@ -338,7 +338,7 @@ impl ReliableUdpRingBufferTransport {
     pub fn send(&mut self, data: &[u8]) -> std::io::Result<u64> {
         // Congestion control: check if we can send
         if !self.congestion.can_send() {
-            METRICS.record_backpressure();
+            record_backpressure();
             return Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Congestion window full"));
         }
 
@@ -370,11 +370,11 @@ impl ReliableUdpRingBufferTransport {
 
                     self.socket.send_to(&buffer, self.remote_addr)?;
                     self.congestion.on_send();
-                    METRICS.record_send(buffer.len() as u64);
+                    record_send(buffer.len() as u64);
                     self.next_send_seq = self.next_send_seq.wrapping_add(1);
                     Ok(seq)
                 } else {
-                    METRICS.record_backpressure();
+                    record_backpressure();
                     Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
                 }
             });
@@ -387,11 +387,11 @@ impl ReliableUdpRingBufferTransport {
 
             self.socket.send_to(packet, self.remote_addr)?;
             self.congestion.on_send();
-            METRICS.record_send(packet.len() as u64);
+            record_send(packet.len() as u64);
             self.next_send_seq = self.next_send_seq.wrapping_add(1);
             Ok(seq)
         } else {
-            METRICS.record_backpressure();
+            record_backpressure();
             Err(std::io::Error::new(std::io::ErrorKind::WouldBlock, "Send window full"))
         }
     }
@@ -506,7 +506,7 @@ impl ReliableUdpRingBufferTransport {
         if let Some(slot) = slots.iter().find(|s| s.sequence() == lost_seq) {
             let pkt_data = slot.data();
             if !pkt_data.is_empty() {
-                METRICS.record_retransmit();
+                record_retransmit();
                 let _ = self.socket.send_to(pkt_data, self.remote_addr);
             }
         }
@@ -577,7 +577,7 @@ impl ReliableUdpRingBufferTransport {
                         } else if header.msg_type == (MessageType::Nak as u8) {
                             // Handle NAK - indicates loss
                             self.congestion.on_loss();
-                            METRICS.record_retransmit();
+                            record_retransmit();
                             let sequence = header.sequence;
                             self.retransmit(sequence);
                         }
@@ -695,7 +695,7 @@ impl ReliableUdpRingBufferTransport {
         }) {
             let pkt_data = slot.data();
             if !pkt_data.is_empty() {
-                METRICS.record_retransmit();
+                record_retransmit();
                 let _ = self.socket.send_to(pkt_data, self.remote_addr);
             }
         }
@@ -842,7 +842,7 @@ impl ReliableUdpRingBufferTransport {
                     }
                 }
                 self.recv_window.deliver_in_order_with(|msg| {
-                    METRICS.record_receive(msg.len() as u64);
+                    record_receive(msg.len() as u64);
                     f(msg);
                 });
 

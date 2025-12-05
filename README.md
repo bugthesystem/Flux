@@ -46,7 +46,44 @@ Kaos provides lock-free ring buffers for inter-thread, inter-process, and networ
 | **Linux** | sendmmsg/recvmmsg | ✅ |
 | | io_uring | ✅ |
 | | AF_XDP kernel bypass | ✅ |
-| **Observability** | Metrics | ✅ |
+| **Observability** | Tracing / Tracy | ✅ |
+
+## Observability
+
+Feature-gated via `tracing` crate. Zero-cost when disabled.
+
+### Console Logs
+
+```toml
+kaos = { version = "0.1", features = ["tracing"] }
+tracing-subscriber = "0.3"
+```
+
+```rust
+tracing_subscriber::fmt::init();
+```
+
+```
+2024-01-15T10:30:45 TRACE send bytes=64
+2024-01-15T10:30:45 TRACE recv bytes=64
+2024-01-15T10:30:46 WARN  backpressure
+```
+
+### Tracy Profiler
+
+Real-time visualization of latency, throughput, and bottlenecks.
+
+```toml
+kaos = { version = "0.1", features = ["tracy"] }
+```
+
+```bash
+brew install tracy                    # Install
+cargo run -p kaos --example profile --features tracy --release  # Run profiler
+tracy                                 # Connect → 127.0.0.1
+```
+
+See [PROFILING.md](./kaos/docs/PROFILING.md) for detailed guide.
 
 ## Performance
 

@@ -7,6 +7,75 @@ cargo bench -p kaos --bench bench_core        # Core patterns
 cargo bench -p kaos --bench bench_trace       # Trace events
 ```
 
+## Tracy Profiler (Real-time)
+
+Tracy provides real-time visualization of message flow, latency, and system performance.
+
+### Setup
+
+```bash
+# Install Tracy
+brew install tracy  # macOS
+
+# Enable in Cargo.toml
+kaos = { version = "0.1", features = ["tracy"] }
+```
+
+### Usage
+
+```rust
+fn main() {
+    kaos::init_tracy();  // Initialize before any kaos operations
+    // ... your app
+}
+```
+
+```bash
+# Terminal 1: Run your app
+cargo run --release --features tracy
+
+# Terminal 2: Open Tracy
+tracy
+# Click Connect → 127.0.0.1 → Connect
+```
+
+### What to Look For
+
+| View | What It Shows | What to Look For |
+|------|---------------|------------------|
+| **Timeline** | Events over time | Message bursts, gaps, patterns |
+| **Zones** | Function timing | Long `send`/`recv` operations |
+| **Statistics** | Aggregated data | Mean/max latency, throughput |
+| **Find Zone** | Search events | Filter by `send`, `recv`, `backpressure` |
+
+### Key Metrics
+
+| Metric | Good | Warning | Bad |
+|--------|------|---------|-----|
+| `send` latency | < 100ns | 100ns-1μs | > 1μs |
+| `recv` latency | < 100ns | 100ns-1μs | > 1μs |
+| `backpressure` events | Rare | Occasional | Frequent |
+| `retransmit` events | 0 | < 1% | > 1% |
+
+### Tracy Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `Space` | Pause/resume |
+| `F` | Find zone |
+| `S` | Statistics |
+| `Ctrl+F` | Search |
+| `Mouse wheel` | Zoom timeline |
+| `Click+drag` | Select time range |
+
+### Troubleshooting
+
+**"Incompatible protocol"**: Version mismatch. Use `tracing-tracy = "=0.11.0"` with brew's Tracy.
+
+**No events visible**: Ensure `kaos::init_tracy()` is called before any kaos operations.
+
+**High overhead**: Tracy adds ~50-100ns per event. Disable for production benchmarks.
+
 ## Memory Analysis
 
 ### macOS - leaks (Built-in)

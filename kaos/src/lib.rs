@@ -3,16 +3,22 @@
 pub mod disruptor;
 pub mod error;
 pub mod crc32;
-pub mod metrics;
+pub mod insights;
 
 // Re-export main components
-pub use disruptor::{RingBuffer, MessageRingBuffer, RingBufferConfig, MessageSlot};
-pub use error::{Result, KaosError};
-pub use metrics::{Metrics, MetricsSnapshot, METRICS};
+pub use disruptor::{ RingBuffer, MessageRingBuffer, RingBufferConfig, MessageSlot };
+pub use error::{ Result, KaosError };
+pub use insights::{
+    record_send,
+    record_receive,
+    record_backpressure,
+    record_retransmit,
+    init_tracy,
+};
 
 #[cfg(test)]
 mod tests {
-    use crate::disruptor::{MessageRingBuffer, RingBufferConfig, MessageSlot, RingBufferEntry};
+    use crate::disruptor::{ MessageRingBuffer, RingBufferConfig, MessageSlot, RingBufferEntry };
 
     #[test]
     fn test_message_ring_buffer_creation() {
@@ -43,7 +49,7 @@ mod tests {
             }
             ring_buffer.publish_batch(seq, claimed);
         }
-        
+
         // Receive
         let mut total_received = 0;
         loop {
