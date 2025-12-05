@@ -72,45 +72,7 @@ fn kaos_batch(events: u64) -> u64 {
     events
 }
 
-/// kaos per-event API (old, checks consumer every time)
-fn kaos_per_event(events: u64) -> u64 {
-    let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
-    let producer_cursor = ring.producer_cursor();
-
-    let ring_cons = ring.clone();
-    let consumer = thread::spawn(move || {
-        let mut cursor = 0u64;
-        while cursor < events {
-            let prod_seq = producer_cursor.load(Ordering::Acquire);
-            if prod_seq > cursor {
-                let slot = ring_cons.get_read_batch(cursor, 1);
-                if !slot.is_empty() {
-                    black_box(slot[0].sequence());
-                    cursor += 1;
-                    ring_cons.update_consumer(cursor);
-                }
-            } else {
-                std::hint::spin_loop();
-            }
-        }
-    });
-
-    let ring_ptr = Arc::as_ptr(&ring) as *const RingBuffer<Slot8>;
-    let mut cursor = 0u64;
-    while cursor < events {
-        let ring_ref = unsafe { &*ring_ptr };
-        if let Some((seq, slots)) = ring_ref.try_claim_slots(1, cursor) {
-            slots[0].set_sequence((cursor % 5) + 1);
-            ring_ref.publish(seq + 1);
-            cursor = seq + 1;
-        }
-    }
-
-    consumer.join().unwrap();
-    events
-}
-
-/// kaos FastProducer (cached consumer check)
+/// kaos FastProducer (cached consumer check, recommended for per-event)
 fn kaos_fast_producer(events: u64) -> u64 {
     let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
@@ -214,11 +176,7 @@ fn benchmark_spsc_comparison(c: &mut Criterion) {
         b.iter(|| kaos_batch(TOTAL_EVENTS))
     });
 
-    group.bench_function(BenchmarkId::new("kaos", "per-event-old"), |b| {
-        b.iter(|| kaos_per_event(TOTAL_EVENTS))
-    });
-
-    group.bench_function(BenchmarkId::new("kaos", "FastProducer"), |b| {
+    group.bench_function(BenchmarkId::new("kaos", "per-event"), |b| {
         b.iter(|| kaos_fast_producer(TOTAL_EVENTS))
     });
 

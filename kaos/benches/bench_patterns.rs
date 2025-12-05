@@ -2,12 +2,19 @@
 //!
 //! Run: cargo bench --bench bench_patterns
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use std::sync::atomic::{AtomicU64, Ordering};
+use criterion::{ criterion_group, criterion_main, BenchmarkId, Criterion, Throughput };
+use std::sync::atomic::{ AtomicU64, Ordering };
 use std::sync::Arc;
 use std::thread;
 
-use kaos::disruptor::{FastMpmcProducer, FastMpscProducer, MpmcRingBuffer, MpscRingBuffer, Slot8, SpmcRingBuffer};
+use kaos::disruptor::{
+    FastMpmcProducer,
+    FastMpscProducer,
+    MpmcRingBuffer,
+    MpscRingBuffer,
+    Slot8,
+    SpmcRingBuffer,
+};
 
 const RING_SIZE: usize = 64 * 1024; // 64K slots
 const BATCH_SIZE: usize = 64;
@@ -42,7 +49,7 @@ fn bench_spmc_1c(events: u64) -> u64 {
         if let Some(next) = ring.try_claim(batch, cursor) {
             for i in 0..batch {
                 unsafe {
-                    ring.write_slot(cursor + i as u64, Slot8 { value: i as u64 });
+                    ring.write_slot(cursor + (i as u64), Slot8 { value: i as u64 });
                 }
             }
             ring.publish(next);
@@ -136,7 +143,7 @@ fn bench_mpmc_batch(events: u64) -> u64 {
         if let Some(seq) = ring.try_claim(batch) {
             for i in 0..batch {
                 unsafe {
-                    ring.write_slot(seq + i as u64, Slot8 { value: i as u64 });
+                    ring.write_slot(seq + (i as u64), Slot8 { value: i as u64 });
                 }
             }
             ring.publish_batch(seq, batch);
@@ -175,7 +182,13 @@ fn bench_mpmc_fast(events: u64) -> u64 {
     let mut sent = 0u64;
     while sent < events {
         let batch = ((events - sent) as usize).min(BATCH_SIZE);
-        if producer.publish_batch(batch, |i, slot| slot.value = i as u64).is_some() {
+        if
+            producer
+                .publish_batch(batch, |i, slot| {
+                    slot.value = i as u64;
+                })
+                .is_some()
+        {
             sent += batch as u64;
         } else {
             std::thread::yield_now();
@@ -213,7 +226,13 @@ fn bench_mpsc_fast(events: u64) -> u64 {
     let mut sent = 0u64;
     while sent < events {
         let batch = ((events - sent) as usize).min(BATCH_SIZE);
-        if producer.publish_batch(batch, |i, slot| slot.value = i as u64).is_some() {
+        if
+            producer
+                .publish_batch(batch, |i, slot| {
+                    slot.value = i as u64;
+                })
+                .is_some()
+        {
             sent += batch as u64;
         } else {
             std::thread::yield_now();
@@ -250,4 +269,3 @@ fn benchmark_patterns(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_patterns);
 criterion_main!(benches);
-
