@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::thread;
 
 // kaos
-use kaos::disruptor::{ RingBuffer, RingBufferEntry, Slot8, FastProducer };
+use kaos::disruptor::{ RingBuffer, RingBufferEntry, Slot8, CachedProducer };
 
 // disruptor-rs
 use disruptor::{ build_single_producer, build_multi_producer, BusySpin, Producer };
@@ -72,7 +72,7 @@ fn kaos_batch(events: u64) -> u64 {
     events
 }
 
-/// kaos FastProducer (cached consumer check, recommended for per-event)
+/// kaos CachedProducer (cached consumer check, recommended for per-event)
 fn kaos_fast_producer(events: u64) -> u64 {
     let ring = Arc::new(RingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let producer_cursor = ring.producer_cursor();
@@ -95,7 +95,7 @@ fn kaos_fast_producer(events: u64) -> u64 {
         }
     });
 
-    let mut producer = FastProducer::new(ring.clone());
+    let mut producer = CachedProducer::new(ring.clone());
     for i in 0..events {
         producer.publish(|slot| {
             slot.value = (i % 5) + 1;

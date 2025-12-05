@@ -128,16 +128,16 @@ cd ext-benches/disruptor-java-bench && mvn compile -q && \
 
 | Use Case | Ring Buffer | Producer | Speed |
 |----------|-------------|----------|-------|
-| **Fastest (single producer)** | `RingBuffer` | `FastProducer` | 2.1 G/s |
+| **Fastest (single producer)** | `RingBuffer` | `CachedProducer` | 2.1 G/s |
 | **Broadcast (fan-out)** | `BroadcastRingBuffer` | direct | 1.1 G/s |
-| **Multi-producer, single consumer** | `MpscRingBuffer` | `FastMpscProducer` | 390 M/s |
+| **Multi-producer, single consumer** | `MpscRingBuffer` | `CachedMpscProducer` | 390 M/s |
 | **Work distribution** | `SpmcRingBuffer` | direct | 1.1 G/s |
-| **Full flexibility** | `MpmcRingBuffer` | `FastMpmcProducer` | 30 M/s |
+| **Full flexibility** | `MpmcRingBuffer` | `CachedMpmcProducer` | 30 M/s |
 
 **When to use `Fast*` producers:**
-- `FastProducer` - Caches consumer position, avoids atomic loads on hot path
-- `FastMpscProducer` - Same caching + closure API for zero-copy writes
-- `FastMpmcProducer` - Same caching + closure API, essential for MPMC performance
+- `CachedProducer` - Caches consumer position, avoids atomic loads on hot path
+- `CachedMpscProducer` - Same caching + closure API for zero-copy writes
+- `CachedMpmcProducer` - Same caching + closure API, essential for MPMC performance
 
 **Rule of thumb:** Always prefer `Fast*` producers when available.
 
@@ -166,10 +166,10 @@ ring.update_consumer(10);
 ### Per-Event API
 
 ```rust
-use kaos::disruptor::{RingBuffer, Slot8, FastProducer};
+use kaos::disruptor::{RingBuffer, Slot8, CachedProducer};
 
 let ring = Arc::new(RingBuffer::<Slot8>::new(1024)?);
-let mut producer = FastProducer::new(ring.clone());
+let mut producer = CachedProducer::new(ring.clone());
 
 // Publish with in-place mutation
 producer.publish(|slot| {

@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::thread;
 
 use kaos::disruptor::{
-    FastMpmcProducer,
-    FastMpscProducer,
+    CachedMpmcProducer,
+    CachedMpscProducer,
     MpmcRingBuffer,
     MpscRingBuffer,
     Slot8,
@@ -157,7 +157,7 @@ fn bench_mpmc_batch(events: u64) -> u64 {
     received.load(Ordering::Acquire)
 }
 
-/// MPMC with FastMpmcProducer (closure API + consumer caching)
+/// MPMC with CachedMpmcProducer (closure API + consumer caching)
 fn bench_mpmc_fast(events: u64) -> u64 {
     let ring = Arc::new(MpmcRingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let received = Arc::new(AtomicU64::new(0));
@@ -177,8 +177,8 @@ fn bench_mpmc_fast(events: u64) -> u64 {
         recv.store(total, Ordering::Release);
     });
 
-    // Single FastMpmcProducer for stability
-    let mut producer = FastMpmcProducer::new(ring.clone());
+    // Single CachedMpmcProducer for stability
+    let mut producer = CachedMpmcProducer::new(ring.clone());
     let mut sent = 0u64;
     while sent < events {
         let batch = ((events - sent) as usize).min(BATCH_SIZE);
@@ -199,7 +199,7 @@ fn bench_mpmc_fast(events: u64) -> u64 {
     received.load(Ordering::Acquire)
 }
 
-/// MPSC with FastMpscProducer (single producer for fair comparison)
+/// MPSC with CachedMpscProducer (single producer for fair comparison)
 fn bench_mpsc_fast(events: u64) -> u64 {
     let ring = Arc::new(MpscRingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let received = Arc::new(AtomicU64::new(0));
@@ -221,8 +221,8 @@ fn bench_mpsc_fast(events: u64) -> u64 {
         recv.store(total, Ordering::Release);
     });
 
-    // Single FastMpscProducer
-    let mut producer = FastMpscProducer::new(ring.clone());
+    // Single CachedMpscProducer
+    let mut producer = CachedMpscProducer::new(ring.clone());
     let mut sent = 0u64;
     while sent < events {
         let batch = ((events - sent) as usize).min(BATCH_SIZE);

@@ -818,15 +818,15 @@ unsafe impl<T: RingBufferEntry> Send for MpmcRingBuffer<T> {}
 unsafe impl<T: RingBufferEntry> Sync for MpmcRingBuffer<T> {}
 
 // ============================================================================
-// FastMpmcProducer - with consumer caching + closure API
+// CachedMpmcProducer - with consumer caching + closure API
 // ============================================================================
 
-pub struct FastMpmcProducer<T: RingBufferEntry> {
+pub struct CachedMpmcProducer<T: RingBufferEntry> {
     ring: Arc<MpmcRingBuffer<T>>,
     sequence_clear_of_consumers: u64,
 }
 
-impl<T: RingBufferEntry> FastMpmcProducer<T> {
+impl<T: RingBufferEntry> CachedMpmcProducer<T> {
     pub fn new(ring: Arc<MpmcRingBuffer<T>>) -> Self {
         let clear = (ring.size as u64) - 1;
         Self {
@@ -923,15 +923,15 @@ impl<T: RingBufferEntry> FastMpmcProducer<T> {
 }
 
 // ============================================================================
-// FastMpscProducer - with consumer caching + closure API
+// CachedMpscProducer - with consumer caching + closure API
 // ============================================================================
 
-pub struct FastMpscProducer<T: RingBufferEntry> {
+pub struct CachedMpscProducer<T: RingBufferEntry> {
     ring: Arc<MpscRingBuffer<T>>,
     sequence_clear_of_consumers: u64,
 }
 
-impl<T: RingBufferEntry> FastMpscProducer<T> {
+impl<T: RingBufferEntry> CachedMpscProducer<T> {
     pub fn new(ring: Arc<MpscRingBuffer<T>>) -> Self {
         let clear = (ring.buffer.len() as u64) - 1;
         Self {
@@ -1103,7 +1103,7 @@ mod tests {
     #[test]
     fn test_fast_mpmc_producer() {
         let ring = Arc::new(MpmcRingBuffer::<Slot8>::new(1024).unwrap());
-        let mut producer = FastMpmcProducer::new(ring.clone());
+        let mut producer = CachedMpmcProducer::new(ring.clone());
 
         // Single publish
         assert!(producer.publish(|slot| slot.value = 42));
@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     fn test_fast_mpsc_producer() {
         let ring = Arc::new(MpscRingBuffer::<Slot8>::new(1024).unwrap());
-        let mut producer = FastMpscProducer::new(ring.clone());
+        let mut producer = CachedMpscProducer::new(ring.clone());
 
         assert!(producer.publish(|slot| slot.value = 99));
         assert_eq!(

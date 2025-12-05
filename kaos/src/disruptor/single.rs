@@ -326,17 +326,17 @@ unsafe impl<T: RingBufferEntry> Send for RingBuffer<T> {}
 unsafe impl<T: RingBufferEntry> Sync for RingBuffer<T> {}
 
 // ============================================================================
-// FastProducer<T> - Per-event producer with cached consumer check
+// CachedProducer<T> - Per-event producer with cached consumer check
 // ============================================================================
 
 /// Producer that caches consumer position to reduce atomic loads.
-pub struct FastProducer<T: RingBufferEntry> {
+pub struct CachedProducer<T: RingBufferEntry> {
     ring: Arc<RingBuffer<T>>,
     sequence: u64,
     sequence_clear_of_consumers: u64,
 }
 
-impl<T: RingBufferEntry> FastProducer<T> {
+impl<T: RingBufferEntry> CachedProducer<T> {
     pub fn new(ring: Arc<RingBuffer<T>>) -> Self {
         let size = ring.size as u64;
         Self {
