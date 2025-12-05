@@ -124,6 +124,23 @@ cd ext-benches/disruptor-java-bench && mvn compile -q && \
   com.kaos.TraceEventsBenchmark
 ```
 
+## API Selection Guide
+
+| Use Case | Ring Buffer | Producer | Speed |
+|----------|-------------|----------|-------|
+| **Fastest (single producer)** | `RingBuffer` | `FastProducer` | 2.1 G/s |
+| **Broadcast (fan-out)** | `BroadcastRingBuffer` | direct | 1.1 G/s |
+| **Multi-producer, single consumer** | `MpscRingBuffer` | `FastMpscProducer` | 390 M/s |
+| **Work distribution** | `SpmcRingBuffer` | direct | 1.1 G/s |
+| **Full flexibility** | `MpmcRingBuffer` | `FastMpmcProducer` | 30 M/s |
+
+**When to use `Fast*` producers:**
+- `FastProducer` - Caches consumer position, avoids atomic loads on hot path
+- `FastMpscProducer` - Same caching + closure API for zero-copy writes
+- `FastMpmcProducer` - Same caching + closure API, essential for MPMC performance
+
+**Rule of thumb:** Always prefer `Fast*` producers when available.
+
 ## Quick Start
 
 ### Batch API
@@ -221,6 +238,7 @@ cargo valgrind run --example spsc_basic -p kaos --release
 | **MPSC** | Multiple Producers, Single Consumer |
 | **SPMC** | Single Producer, Multiple Consumers |
 | **MPMC** | Multiple Producers, Multiple Consumers |
+| **CAS** | Compare-And-Swap (atomic operation for lock-free coordination) |
 | **IPC** | Inter-Process Communication |
 | **mmap** | Memory-mapped file (shared memory) |
 | **RUDP** | Reliable UDP (guaranteed delivery) |

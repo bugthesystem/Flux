@@ -83,19 +83,15 @@ fn main() {
             let mut local_count = 0u64;
 
             loop {
-                // Using try_read() returns a ReadGuard that automatically
-                // commits the slot when dropped - even on early exit!
-                if let Some(guard) = ring_buffer_clone.try_read() {
-                    let slot = guard.get();
-
+                // try_read() returns (sequence, &slot) tuple
+                if let Some((_seq, slot)) = ring_buffer_clone.try_read() {
                     if slot.value == 0 {
-                        // Sentinel received - guard drops and commits automatically!
+                        // Sentinel received
                         break;
                     }
 
                     local_sum += slot.value;
                     local_count += 1;
-                    // guard drops here, slot committed
                 } else {
                     std::hint::spin_loop();
                 }

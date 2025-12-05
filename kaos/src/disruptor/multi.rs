@@ -176,40 +176,44 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
         self.consumer_cursor.store(sequence, Ordering::Release);
     }
 
+    /// Get highest contiguous published sequence (optimized with trailing_zeros)
+    #[inline]
     pub fn get_published_sequence(&self) -> u64 {
-        let prev = self.consumer_cursor.load(Ordering::Relaxed);
-        let claim_seq = self.claim_cursor.load(Ordering::Acquire);
-        if prev >= claim_seq {
-            return prev;
+        let consumer = self.consumer_cursor.load(Ordering::Relaxed);
+        let claimed = self.claim_cursor.load(Ordering::Acquire);
+
+        if consumer >= claimed {
+            return consumer;
         }
 
-        let mut availability_flag = self.calculate_flag(prev);
-        let (mut availability_index, mut bit_index) = self.calculate_indices(prev);
-        let mut availability =
-            self.available[availability_index].load(Ordering::Acquire) >> bit_index;
-        let mut highest_available = prev;
+        let mut seq = consumer;
+        let mut flag = self.calculate_flag(seq);
 
-        loop {
-            if (availability & 1) != availability_flag {
-                return highest_available.saturating_sub(1);
-            }
-            highest_available += 1;
-            if highest_available >= claim_seq {
-                return claim_seq;
-            }
+        while seq < claimed {
+            let (avail_idx, bit_idx) = self.calculate_indices(seq);
+            let availability = self.available[avail_idx].load(Ordering::Acquire);
 
-            if bit_index < 63 {
-                bit_index += 1;
-                availability >>= 1;
-            } else {
-                (availability_index, _) = self.calculate_indices(highest_available);
-                availability = self.available[availability_index].load(Ordering::Acquire);
-                bit_index = 0;
-                if availability_index == 0 {
-                    availability_flag ^= 1;
+            // Round 0: published=0, unpublished=1. Round 1: published=1, unpublished=0
+            let expected = if flag == 0 { 0u64 } else { !0u64 };
+            let diff = availability ^ expected;
+            let mask = !0u64 << bit_idx;
+            let relevant = diff & mask;
+
+            if relevant == 0 {
+                let bits_checked = 64 - bit_idx;
+                seq += bits_checked as u64;
+                let new_avail_idx = ((seq as usize) & self.index_mask) >> 6;
+                if new_avail_idx == 0 && avail_idx != 0 {
+                    flag ^= 1;
                 }
+            } else {
+                let first_unpublished = relevant.trailing_zeros() as u64;
+                seq += first_unpublished - (bit_idx as u64);
+                break;
             }
         }
+
+        seq.min(claimed)
     }
 }
 
@@ -555,7 +559,7 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
             .map(|_| T::default())
             .collect::<Vec<_>>()
             .into_boxed_slice();
-        
+
         // Initialize availability bitmap with all 1s (nothing published yet)
         let u64_needed = size / 64;
         let available = (0..u64_needed)
@@ -594,18 +598,22 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
             let current = self.claim_cursor.load(Ordering::Relaxed);
             let next = current + (count as u64);
             let consumer_seq = self.consumer_cursor.load(Ordering::Acquire);
-            
-            if next.wrapping_sub(consumer_seq) > self.size as u64 {
+
+            if next.wrapping_sub(consumer_seq) > (self.size as u64) {
                 return None;
             }
 
-            match self.claim_cursor.compare_exchange_weak(
-                current,
-                next,
-                Ordering::Acquire,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return Some(current),
+            match
+                self.claim_cursor.compare_exchange_weak(
+                    current,
+                    next,
+                    Ordering::Acquire,
+                    Ordering::Relaxed
+                )
+            {
+                Ok(_) => {
+                    return Some(current);
+                }
                 Err(_) => std::hint::spin_loop(),
             }
         }
@@ -662,45 +670,52 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
         }
     }
 
-    /// Get highest contiguous published sequence (scans bitmap)
-    /// Returns the sequence number of the last published slot, or consumer-1 if nothing published
+    /// Get highest contiguous published sequence (optimized bitmap scan)
+    /// Uses trailing_zeros() for O(1) per 64 slots instead of O(64)
+    #[inline]
     pub fn get_published_sequence(&self) -> u64 {
         let consumer = self.consumer_cursor.load(Ordering::Relaxed);
         let claimed = self.claim_cursor.load(Ordering::Acquire);
-        
+
         if consumer >= claimed {
-            // Nothing claimed beyond consumer position
             return consumer.saturating_sub(1);
         }
 
-        let mut flag = self.calculate_flag(consumer);
-        let (mut avail_idx, mut bit_idx) = self.calculate_indices(consumer);
-        let mut availability = self.available[avail_idx].load(Ordering::Acquire) >> bit_idx;
-        let mut highest = consumer;
+        let mut seq = consumer;
+        let mut flag = self.calculate_flag(seq);
 
-        loop {
-            if (availability & 1) != flag {
-                // Found unpublished slot, return previous
-                return highest.saturating_sub(1);
-            }
-            highest += 1;
-            if highest >= claimed {
-                // All claimed slots are published
-                return claimed - 1;
-            }
+        while seq < claimed {
+            let (avail_idx, bit_idx) = self.calculate_indices(seq);
+            let availability = self.available[avail_idx].load(Ordering::Acquire);
 
-            if bit_idx < 63 {
-                bit_idx += 1;
-                availability >>= 1;
-            } else {
-                (avail_idx, _) = self.calculate_indices(highest);
-                availability = self.available[avail_idx].load(Ordering::Acquire);
-                bit_idx = 0;
-                if avail_idx == 0 {
-                    flag ^= 1;
+            // Round 0: published=0, unpublished=1. Round 1: published=1, unpublished=0
+            // XOR with expected "all published" pattern to find unpublished (1 bits)
+            let expected = if flag == 0 { 0u64 } else { !0u64 };
+            let diff = availability ^ expected;
+
+            // Mask off bits before our starting position
+            let mask = !0u64 << bit_idx;
+            let relevant = diff & mask;
+
+            if relevant == 0 {
+                // All remaining bits in this u64 are published
+                let bits_checked = 64 - bit_idx;
+                seq += bits_checked as u64;
+
+                // Check if we wrapped to next availability index
+                let new_avail_idx = ((seq as usize) & self.index_mask) >> 6;
+                if new_avail_idx == 0 && avail_idx != 0 {
+                    flag ^= 1; // Flipped round
                 }
+            } else {
+                // Found first unpublished bit
+                let first_unpublished = relevant.trailing_zeros() as u64;
+                seq += first_unpublished - (bit_idx as u64);
+                break;
             }
         }
+
+        seq.min(claimed).saturating_sub(1)
     }
 
     #[cfg(feature = "unsafe-perf")]
@@ -725,7 +740,7 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
     pub fn try_read(&self) -> Option<(u64, &T)> {
         let published = self.get_published_sequence();
         let consumer = self.consumer_cursor.load(Ordering::Relaxed);
-        
+
         // published is the last published sequence, consumer is next to read
         // So consumer <= published means there's data available
         if consumer > published {
@@ -733,12 +748,14 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
         }
 
         // Try to claim this slot
-        match self.consumer_cursor.compare_exchange_weak(
-            consumer,
-            consumer + 1,
-            Ordering::Acquire,
-            Ordering::Relaxed,
-        ) {
+        match
+            self.consumer_cursor.compare_exchange_weak(
+                consumer,
+                consumer + 1,
+                Ordering::Acquire,
+                Ordering::Relaxed
+            )
+        {
             Ok(_) => {
                 let idx = (consumer as usize) & self.mask;
                 Some((consumer, &self.buffer[idx]))
@@ -750,7 +767,7 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
     pub fn try_read_batch(&self, max_count: usize) -> Option<(u64, &[T])> {
         let published = self.get_published_sequence();
         let consumer = self.consumer_cursor.load(Ordering::Relaxed);
-        
+
         if consumer > published {
             return None;
         }
@@ -760,16 +777,18 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
         let count = available.min(max_count);
 
         // Try to claim these slots
-        match self.consumer_cursor.compare_exchange_weak(
-            consumer,
-            consumer + count as u64,
-            Ordering::Acquire,
-            Ordering::Relaxed,
-        ) {
+        match
+            self.consumer_cursor.compare_exchange_weak(
+                consumer,
+                consumer + (count as u64),
+                Ordering::Acquire,
+                Ordering::Relaxed
+            )
+        {
             Ok(_) => {
                 let start_idx = (consumer as usize) & self.mask;
                 let end_idx = start_idx + count;
-                
+
                 if end_idx <= self.buffer.len() {
                     Some((consumer, &self.buffer[start_idx..end_idx]))
                 } else {
@@ -809,7 +828,7 @@ pub struct FastMpmcProducer<T: RingBufferEntry> {
 
 impl<T: RingBufferEntry> FastMpmcProducer<T> {
     pub fn new(ring: Arc<MpmcRingBuffer<T>>) -> Self {
-        let clear = ring.size as u64 - 1;
+        let clear = (ring.size as u64) - 1;
         Self {
             ring,
             sequence_clear_of_consumers: clear,
@@ -818,10 +837,7 @@ impl<T: RingBufferEntry> FastMpmcProducer<T> {
 
     /// Publish with closure (zero-copy)
     #[inline]
-    pub fn publish<F>(&mut self, update: F) -> bool
-    where
-        F: FnOnce(&mut T),
-    {
+    pub fn publish<F>(&mut self, update: F) -> bool where F: FnOnce(&mut T) {
         if let Some(seq) = self.try_claim_cached(1) {
             let idx = (seq as usize) & self.ring.mask;
             // SAFETY: We have exclusive claim to this slot via try_claim_cached
@@ -837,18 +853,17 @@ impl<T: RingBufferEntry> FastMpmcProducer<T> {
     /// Batch publish with closure (zero-copy)
     #[inline]
     pub fn publish_batch<F>(&mut self, count: usize, mut update: F) -> Option<usize>
-    where
-        F: FnMut(usize, &mut T),
+        where F: FnMut(usize, &mut T)
     {
         let seq = self.try_claim_cached(count)?;
-        
+
         for i in 0..count {
-            let idx = ((seq + i as u64) as usize) & self.ring.mask;
+            let idx = ((seq + (i as u64)) as usize) & self.ring.mask;
             // SAFETY: We have exclusive claim to this slot
             let slot = unsafe { &mut *(self.ring.buffer.as_ptr().add(idx) as *mut T) };
             update(i, slot);
         }
-        
+
         self.ring.publish_batch(seq, count);
         Some(count)
     }
@@ -862,13 +877,17 @@ impl<T: RingBufferEntry> FastMpmcProducer<T> {
 
             // Fast path: check cached clear position
             if next <= self.sequence_clear_of_consumers {
-                match self.ring.claim_cursor.compare_exchange_weak(
-                    current,
-                    next,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => return Some(current),
+                match
+                    self.ring.claim_cursor.compare_exchange_weak(
+                        current,
+                        next,
+                        Ordering::Acquire,
+                        Ordering::Relaxed
+                    )
+                {
+                    Ok(_) => {
+                        return Some(current);
+                    }
                     Err(_) => {
                         std::hint::spin_loop();
                         continue;
@@ -879,20 +898,24 @@ impl<T: RingBufferEntry> FastMpmcProducer<T> {
             // Slow path: update cache from actual consumer position
             let consumer = self.ring.consumer_cursor.load(Ordering::Acquire);
             let free = (self.ring.size as u64).saturating_sub(current.wrapping_sub(consumer));
-            
-            if free < count as u64 {
+
+            if free < (count as u64) {
                 return None;
             }
 
-            self.sequence_clear_of_consumers = consumer + self.ring.size as u64 - 1;
+            self.sequence_clear_of_consumers = consumer + (self.ring.size as u64) - 1;
 
-            match self.ring.claim_cursor.compare_exchange_weak(
-                current,
-                next,
-                Ordering::Acquire,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return Some(current),
+            match
+                self.ring.claim_cursor.compare_exchange_weak(
+                    current,
+                    next,
+                    Ordering::Acquire,
+                    Ordering::Relaxed
+                )
+            {
+                Ok(_) => {
+                    return Some(current);
+                }
                 Err(_) => std::hint::spin_loop(),
             }
         }
@@ -910,7 +933,7 @@ pub struct FastMpscProducer<T: RingBufferEntry> {
 
 impl<T: RingBufferEntry> FastMpscProducer<T> {
     pub fn new(ring: Arc<MpscRingBuffer<T>>) -> Self {
-        let clear = ring.buffer.len() as u64 - 1;
+        let clear = (ring.buffer.len() as u64) - 1;
         Self {
             ring,
             sequence_clear_of_consumers: clear,
@@ -919,10 +942,7 @@ impl<T: RingBufferEntry> FastMpscProducer<T> {
 
     /// Publish with closure (zero-copy)
     #[inline]
-    pub fn publish<F>(&mut self, update: F) -> bool
-    where
-        F: FnOnce(&mut T),
-    {
+    pub fn publish<F>(&mut self, update: F) -> bool where F: FnOnce(&mut T) {
         if let Some(seq) = self.try_claim_cached(1) {
             let idx = (seq as usize) & self.ring.mask;
             // SAFETY: We have exclusive claim to this slot
@@ -938,18 +958,17 @@ impl<T: RingBufferEntry> FastMpscProducer<T> {
     /// Batch publish with closure (zero-copy)
     #[inline]
     pub fn publish_batch<F>(&mut self, count: usize, mut update: F) -> Option<usize>
-    where
-        F: FnMut(usize, &mut T),
+        where F: FnMut(usize, &mut T)
     {
         let seq = self.try_claim_cached(count)?;
-        
+
         for i in 0..count {
-            let idx = ((seq + i as u64) as usize) & self.ring.mask;
+            let idx = ((seq + (i as u64)) as usize) & self.ring.mask;
             // SAFETY: We have exclusive claim to this slot
             let slot = unsafe { &mut *(self.ring.buffer.as_ptr().add(idx) as *mut T) };
             update(i, slot);
         }
-        
+
         self.ring.publish_batch(seq, count);
         Some(count)
     }
@@ -961,13 +980,17 @@ impl<T: RingBufferEntry> FastMpscProducer<T> {
             let next = current + (count as u64);
 
             if next <= self.sequence_clear_of_consumers {
-                match self.ring.claim_cursor.compare_exchange_weak(
-                    current,
-                    next,
-                    Ordering::Acquire,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => return Some(current),
+                match
+                    self.ring.claim_cursor.compare_exchange_weak(
+                        current,
+                        next,
+                        Ordering::Acquire,
+                        Ordering::Relaxed
+                    )
+                {
+                    Ok(_) => {
+                        return Some(current);
+                    }
                     Err(_) => {
                         std::hint::spin_loop();
                         continue;
@@ -976,21 +999,27 @@ impl<T: RingBufferEntry> FastMpscProducer<T> {
             }
 
             let consumer = self.ring.consumer_cursor.load(Ordering::Acquire);
-            let free = (self.ring.buffer.len() as u64).saturating_sub(current.wrapping_sub(consumer));
-            
-            if free < count as u64 {
+            let free = (self.ring.buffer.len() as u64).saturating_sub(
+                current.wrapping_sub(consumer)
+            );
+
+            if free < (count as u64) {
                 return None;
             }
 
-            self.sequence_clear_of_consumers = consumer + self.ring.buffer.len() as u64 - 1;
+            self.sequence_clear_of_consumers = consumer + (self.ring.buffer.len() as u64) - 1;
 
-            match self.ring.claim_cursor.compare_exchange_weak(
-                current,
-                next,
-                Ordering::Acquire,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return Some(current),
+            match
+                self.ring.claim_cursor.compare_exchange_weak(
+                    current,
+                    next,
+                    Ordering::Acquire,
+                    Ordering::Relaxed
+                )
+            {
+                Ok(_) => {
+                    return Some(current);
+                }
                 Err(_) => std::hint::spin_loop(),
             }
         }
@@ -1058,7 +1087,7 @@ mod tests {
     fn test_mpmc_batch_publish() {
         let ring = MpmcRingBuffer::<Slot8>::new(1024).unwrap();
         let seq = ring.try_claim(64).unwrap();
-        
+
         for i in 0..64 {
             unsafe {
                 ring.write_slot(seq + i, Slot8 { value: i + 1 });
@@ -1078,9 +1107,12 @@ mod tests {
 
         // Single publish
         assert!(producer.publish(|slot| slot.value = 42));
-        
+
         // Batch publish
-        assert_eq!(producer.publish_batch(10, |i, slot| slot.value = i as u64), Some(10));
+        assert_eq!(
+            producer.publish_batch(10, |i, slot| slot.value = i as u64),
+            Some(10)
+        );
 
         // Read back
         let (_, slot) = ring.try_read().unwrap();
@@ -1093,7 +1125,10 @@ mod tests {
         let mut producer = FastMpscProducer::new(ring.clone());
 
         assert!(producer.publish(|slot| slot.value = 99));
-        assert_eq!(producer.publish_batch(5, |i, slot| slot.value = i as u64), Some(5));
+        assert_eq!(
+            producer.publish_batch(5, |i, slot| slot.value = i as u64),
+            Some(5)
+        );
     }
 
     #[test]
