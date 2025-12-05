@@ -17,8 +17,8 @@ mod slots;
 pub use completion::{BatchReadGuard, CompletionTracker, ReadGuard, ReadableRing};
 pub use ipc::SharedRingBuffer;
 pub use multi::{
-    MpmcRingBuffer, MpscConsumer, MpscConsumerBuilder, MpscEventHandler, MpscProducer,
-    MpscProducerBuilder, MpscRingBuffer, SpmcRingBuffer,
+    FastMpmcProducer, FastMpscProducer, MpmcRingBuffer, MpscConsumer, MpscConsumerBuilder,
+    MpscEventHandler, MpscProducer, MpscProducerBuilder, MpscRingBuffer, SpmcRingBuffer,
 };
 pub use single::{
     BroadcastRingBuffer, Consumer, ConsumerBuilder, EventHandler, FastProducer, MessageRingBuffer,

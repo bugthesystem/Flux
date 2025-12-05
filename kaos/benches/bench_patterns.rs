@@ -7,11 +7,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 
-use kaos::disruptor::{MpmcRingBuffer, Slot8, SpmcRingBuffer};
+use kaos::disruptor::{FastMpmcProducer, FastMpscProducer, MpmcRingBuffer, MpscRingBuffer, Slot8, SpmcRingBuffer};
 
 const RING_SIZE: usize = 64 * 1024; // 64K slots
 const BATCH_SIZE: usize = 64;
 const TOTAL_EVENTS: u64 = 1_000_000; // 1M events
+const SINGLE_EVENTS: u64 = 100_000; // 100K for per-event (slow) benchmarks
 
 /// SPMC with single consumer
 fn bench_spmc_1c(events: u64) -> u64 {
@@ -55,7 +56,7 @@ fn bench_spmc_1c(events: u64) -> u64 {
     received.load(Ordering::Acquire)
 }
 
-/// MPMC with 2 producers, 1 consumer
+/// MPMC with 2 producers, 1 consumer (per-event publish)
 fn bench_mpmc_2p1c(events: u64) -> u64 {
     let ring = Arc::new(MpmcRingBuffer::<Slot8>::new(RING_SIZE).unwrap());
     let events_per_producer = events / 2;
@@ -65,28 +66,20 @@ fn bench_mpmc_2p1c(events: u64) -> u64 {
     // Consumer
     let ring_cons = ring.clone();
     let recv = received.clone();
-    let prod_count = produced.clone();
     let consumer = thread::spawn(move || {
         let mut total = 0u64;
-        loop {
-            if let Some(guard) = ring_cons.try_read() {
-                std::hint::black_box(guard.get().value);
+        while total < events {
+            if let Some((_, slot)) = ring_cons.try_read() {
+                std::hint::black_box(slot.value);
                 total += 1;
-                if total >= events {
-                    break;
-                }
             } else {
-                // Check if all produced and we've consumed all
-                if prod_count.load(Ordering::Acquire) >= events && total >= events {
-                    break;
-                }
                 std::hint::spin_loop();
             }
         }
         recv.store(total, Ordering::Release);
     });
 
-    // 2 Producers
+    // 2 Producers (per-event)
     let handles: Vec<_> = (0..2)
         .map(|_| {
             let ring_prod = ring.clone();
@@ -116,58 +109,117 @@ fn bench_mpmc_2p1c(events: u64) -> u64 {
     received.load(Ordering::Acquire)
 }
 
-/// MPMC with batch claiming (producers batch, consumer single)
+/// MPMC with batch XOR publish (single producer for simplicity)
 fn bench_mpmc_batch(events: u64) -> u64 {
     let ring = Arc::new(MpmcRingBuffer::<Slot8>::new(RING_SIZE).unwrap());
-    let events_per_producer = events / 2;
-    let produced = Arc::new(AtomicU64::new(0));
     let received = Arc::new(AtomicU64::new(0));
 
-    // Consumer (single read - MPMC doesn't have batch read)
+    // Consumer
     let ring_cons = ring.clone();
     let recv = received.clone();
     let consumer = thread::spawn(move || {
         let mut total = 0u64;
         while total < events {
-            if let Some(guard) = ring_cons.try_read() {
-                std::hint::black_box(guard.get().value);
-                total += 1;
+            if let Some((_, slots)) = ring_cons.try_read_batch(BATCH_SIZE) {
+                total += slots.len() as u64;
             } else {
-                std::hint::spin_loop();
+                std::thread::yield_now();
             }
         }
         recv.store(total, Ordering::Release);
     });
 
-    // 2 Producers with batch claims
-    let handles: Vec<_> = (0..2)
-        .map(|_| {
-            let ring_prod = ring.clone();
-            let prod = produced.clone();
-            thread::spawn(move || {
-                let mut sent = 0u64;
-                while sent < events_per_producer {
-                    let batch = ((events_per_producer - sent) as usize).min(BATCH_SIZE);
-                    if let Some(seq) = ring_prod.try_claim(batch) {
-                        for i in 0..batch {
-                            unsafe {
-                                ring_prod.write_slot(seq + i as u64, Slot8 { value: i as u64 });
-                            }
-                            ring_prod.publish(seq + i as u64);
-                        }
-                        sent += batch as u64;
-                        prod.fetch_add(batch as u64, Ordering::Relaxed);
-                    } else {
-                        std::hint::spin_loop();
-                    }
+    // Single producer with batch
+    let mut sent = 0u64;
+    while sent < events {
+        let batch = ((events - sent) as usize).min(BATCH_SIZE);
+        if let Some(seq) = ring.try_claim(batch) {
+            for i in 0..batch {
+                unsafe {
+                    ring.write_slot(seq + i as u64, Slot8 { value: i as u64 });
                 }
-            })
-        })
-        .collect();
-
-    for h in handles {
-        h.join().unwrap();
+            }
+            ring.publish_batch(seq, batch);
+            sent += batch as u64;
+        } else {
+            std::thread::yield_now();
+        }
     }
+
+    consumer.join().unwrap();
+    received.load(Ordering::Acquire)
+}
+
+/// MPMC with FastMpmcProducer (closure API + consumer caching)
+fn bench_mpmc_fast(events: u64) -> u64 {
+    let ring = Arc::new(MpmcRingBuffer::<Slot8>::new(RING_SIZE).unwrap());
+    let received = Arc::new(AtomicU64::new(0));
+
+    // Consumer
+    let ring_cons = ring.clone();
+    let recv = received.clone();
+    let consumer = thread::spawn(move || {
+        let mut total = 0u64;
+        while total < events {
+            if let Some((_, slots)) = ring_cons.try_read_batch(BATCH_SIZE) {
+                total += slots.len() as u64;
+            } else {
+                std::thread::yield_now();
+            }
+        }
+        recv.store(total, Ordering::Release);
+    });
+
+    // Single FastMpmcProducer for stability
+    let mut producer = FastMpmcProducer::new(ring.clone());
+    let mut sent = 0u64;
+    while sent < events {
+        let batch = ((events - sent) as usize).min(BATCH_SIZE);
+        if producer.publish_batch(batch, |i, slot| slot.value = i as u64).is_some() {
+            sent += batch as u64;
+        } else {
+            std::thread::yield_now();
+        }
+    }
+
+    consumer.join().unwrap();
+    received.load(Ordering::Acquire)
+}
+
+/// MPSC with FastMpscProducer (single producer for fair comparison)
+fn bench_mpsc_fast(events: u64) -> u64 {
+    let ring = Arc::new(MpscRingBuffer::<Slot8>::new(RING_SIZE).unwrap());
+    let received = Arc::new(AtomicU64::new(0));
+
+    // Consumer
+    let ring_cons = ring.clone();
+    let recv = received.clone();
+    let consumer = thread::spawn(move || {
+        let mut total = 0u64;
+        while total < events {
+            let published = ring_cons.get_published_sequence();
+            if published >= total {
+                ring_cons.update_consumer(published);
+                total = published;
+            } else {
+                std::thread::yield_now();
+            }
+        }
+        recv.store(total, Ordering::Release);
+    });
+
+    // Single FastMpscProducer
+    let mut producer = FastMpscProducer::new(ring.clone());
+    let mut sent = 0u64;
+    while sent < events {
+        let batch = ((events - sent) as usize).min(BATCH_SIZE);
+        if producer.publish_batch(batch, |i, slot| slot.value = i as u64).is_some() {
+            sent += batch as u64;
+        } else {
+            std::thread::yield_now();
+        }
+    }
+
     consumer.join().unwrap();
     received.load(Ordering::Acquire)
 }
@@ -181,12 +233,16 @@ fn benchmark_patterns(c: &mut Criterion) {
         b.iter(|| bench_spmc_1c(TOTAL_EVENTS))
     });
 
-    group.bench_function(BenchmarkId::new("pattern", "MPMC-2P1C-single"), |b| {
-        b.iter(|| bench_mpmc_2p1c(TOTAL_EVENTS))
+    group.bench_function(BenchmarkId::new("pattern", "MPMC-batch"), |b| {
+        b.iter(|| bench_mpmc_batch(TOTAL_EVENTS))
     });
 
-    group.bench_function(BenchmarkId::new("pattern", "MPMC-2P1C-batch"), |b| {
-        b.iter(|| bench_mpmc_batch(TOTAL_EVENTS))
+    group.bench_function(BenchmarkId::new("pattern", "MPMC-fast"), |b| {
+        b.iter(|| bench_mpmc_fast(TOTAL_EVENTS))
+    });
+
+    group.bench_function(BenchmarkId::new("pattern", "MPSC-fast"), |b| {
+        b.iter(|| bench_mpsc_fast(TOTAL_EVENTS))
     });
 
     group.finish();
@@ -194,3 +250,4 @@ fn benchmark_patterns(c: &mut Criterion) {
 
 criterion_group!(benches, benchmark_patterns);
 criterion_main!(benches);
+
