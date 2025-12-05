@@ -21,7 +21,7 @@
 
 Kaos provides lock-free ring buffers for inter-thread, inter-process, and network communication. Built on the [LMAX Disruptor](https://lmax-exchange.github.io/disruptor/) and [Aeron](https://github.com/real-logic/aeron) high performance networking patterns with modern Rust.
 
-> **Note:** Preview release. Uses `unsafe` perf critical paths (soon to be optional with `safe` and `unsafe` variants) and APIs may change.
+> **Note:** Preview release. APIs may change.
 
 ## Crates
 
@@ -126,7 +126,7 @@ cd ext-benches/disruptor-java-bench && mvn compile -q && \
 
 ## Quick Start
 
-### Batch API (2.1 G/s)
+### Batch API
 
 ```rust
 use kaos::disruptor::{RingBuffer, Slot8};
@@ -146,7 +146,7 @@ let slots = ring.get_read_batch(0, 10);
 ring.update_consumer(10);
 ```
 
-### Per-Event API (416 M/s)
+### Per-Event API
 
 ```rust
 use kaos::disruptor::{RingBuffer, Slot8, FastProducer};

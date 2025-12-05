@@ -2,41 +2,26 @@
 
 Shared memory IPC using kaos ring buffers.
 
-> **⚠️ Preview Release (0.1.0-preview)** - API may change. Uses `unsafe` for shared memory.
-
-## Performance
-
-Benchmarked on Apple M1 (macOS):
-
-| Benchmark | Throughput |
-|-----------|------------|
-| Single message | ~137 M/s |
-| Sustained batch | ~310 M/s |
-
-```bash
-cargo bench --bench bench_ipc
-```
-
 ## Usage
 
 ### Publisher (Process A)
 
 ```rust
-use kaos_ipc::{Publisher, Slot8};
+use kaos_ipc::Publisher;
 
-let mut publisher = Publisher::<Slot8>::new("/tmp/channel", 64 * 1024)?;
-publisher.send(&42u64.to_le_bytes())?;
+let mut pub_ = Publisher::create("/tmp/channel", 64 * 1024)?;
+pub_.send(42u64)?;
 ```
 
 ### Subscriber (Process B)
 
 ```rust
-use kaos_ipc::{Subscriber, Slot8};
+use kaos_ipc::Subscriber;
 
-let mut subscriber = Subscriber::<Slot8>::new("/tmp/channel")?;
-subscriber.receive(|slot| {
-    println!("{}", slot.value);
-});
+let mut sub = Subscriber::open("/tmp/channel")?;
+while let Some(val) = sub.try_receive() {
+    println!("{}", val);
+}
 ```
 
 ## Architecture
@@ -50,23 +35,11 @@ Process A                  /tmp/channel                 Process B
 └───────────┘       └──────────────────────┘       └───────────┘
 ```
 
-## Slot Types
+## Benchmarks
 
-| Type | Size |
-|------|------|
-| `Slot8` | 8B |
-| `Slot16` | 16B |
-| `Slot32` | 32B |
-| `Slot64` | 64B |
-| `MessageSlot` | 128B |
-
-## Platform Support
-
-| Platform | Status |
-|----------|--------|
-| macOS ARM64 | ✅ Tested |
-| macOS x86_64 | Untested |
-| Linux | Untested |
+```bash
+cargo bench -p kaos-ipc
+```
 
 ## License
 
