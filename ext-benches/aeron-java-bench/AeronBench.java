@@ -21,40 +21,118 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Aeron Benchmark
  * 
- * Run with: jbang AeronBench.java
+ * Single process:  jbang AeronBench.java
+ * Two process:     jbang AeronBench.java recv
+ *                  jbang AeronBench.java send
  */
 public class AeronBench {
     
     private static final int TEST_DURATION_SECS = 10;
     private static final int FRAGMENT_COUNT_LIMIT = 256;
+    private static final long N = 100_000;
     
     private static final String IPC_CHANNEL = CommonContext.IPC_CHANNEL;
     private static final String UDP_CHANNEL = "aeron:udp?endpoint=localhost:20121";
     private static final int STREAM_ID = 1001;
     
     public static void main(String[] args) throws Exception {
+        if (args.length > 0) {
+            // Two-process mode (like kaos-rudp benchmark)
+            switch (args[0]) {
+                case "recv" -> twoProcessRecv();
+                case "send" -> twoProcessSend();
+                default -> System.out.println("Usage: AeronBench [recv|send]");
+            }
+            return;
+        }
+        
+        // Single-process embedded mode
         System.out.println("\n╔═══════════════════════════════════════════╗");
-        System.out.println("║  Aeron Benchmark                           ║");
+        System.out.println("║  Aeron Benchmark (embedded)                ║");
         System.out.println("╚═══════════════════════════════════════════╝\n");
         
-        System.out.println("═══════════════════════════════════════════");
-        System.out.println("  IPC 8-byte");
-        System.out.println("═══════════════════════════════════════════\n");
-        runBenchmark(IPC_CHANNEL, "IPC-8B", 8);
+        int[] sizes = {8, 16, 32, 64};
+        for (int size : sizes) {
+            System.out.println("═══════════════════════════════════════════");
+            System.out.println("  IPC " + size + "-byte");
+            System.out.println("═══════════════════════════════════════════\n");
+            runBenchmark(IPC_CHANNEL, "IPC-" + size + "B", size);
+            Thread.sleep(1000);
+        }
+    }
+    
+    // Two-process receiver (start first)
+    private static void twoProcessRecv() throws Exception {
+        System.out.println("AERON RECV (start send in another terminal)");
         
-        Thread.sleep(2000);
+        MediaDriver.Context ctx = new MediaDriver.Context()
+            .threadingMode(ThreadingMode.SHARED)
+            .dirDeleteOnStart(true);
         
-        System.out.println("\n═══════════════════════════════════════════");
-        System.out.println("  IPC 64-byte");
-        System.out.println("═══════════════════════════════════════════\n");
-        runBenchmark(IPC_CHANNEL, "IPC-64B", 64);
+        try (MediaDriver driver = MediaDriver.launch(ctx);
+             Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()))) {
+            
+            Subscription sub = aeron.addSubscription(UDP_CHANNEL, STREAM_ID);
+            AtomicLong received = new AtomicLong(0);
+            long[] startTime = {0};
+            
+            FragmentHandler handler = (buf, offset, len, header) -> {
+                if (startTime[0] == 0) startTime[0] = System.nanoTime();
+                received.incrementAndGet();
+            };
+            
+            System.out.println("Waiting for messages...");
+            while (received.get() < N) {
+                sub.poll(handler, FRAGMENT_COUNT_LIMIT);
+                if (received.get() > 0 && received.get() % 20000 == 0) {
+                    System.out.println("  recv: " + received.get());
+                }
+            }
+            
+            double elapsed = (System.nanoTime() - startTime[0]) / 1e9;
+            System.out.printf("RECV %d in %.2fs (%.2f M/s)%n", received.get(), elapsed, received.get() / elapsed / 1e6);
+        }
+    }
+    
+    // Two-process sender
+    private static void twoProcessSend() throws Exception {
+        System.out.println("AERON SEND → localhost:20121");
         
-        Thread.sleep(2000);
+        MediaDriver.Context ctx = new MediaDriver.Context()
+            .threadingMode(ThreadingMode.SHARED)
+            .dirDeleteOnStart(true);
         
-        System.out.println("\n═══════════════════════════════════════════");
-        System.out.println("  UDP 64-byte");
-        System.out.println("═══════════════════════════════════════════\n");
-        runBenchmark(UDP_CHANNEL, "UDP-64B", 64);
+        try (MediaDriver driver = MediaDriver.launch(ctx);
+             Aeron aeron = Aeron.connect(new Aeron.Context().aeronDirectoryName(driver.aeronDirectoryName()))) {
+            
+            Publication pub = aeron.addPublication(UDP_CHANNEL, STREAM_ID);
+            
+            // Wait for connection
+            while (!pub.isConnected()) {
+                Thread.sleep(10);
+            }
+            System.out.println("Connected!");
+            
+            ByteBuffer bb = BufferUtil.allocateDirectAligned(8, 64);
+            UnsafeBuffer buffer = new UnsafeBuffer(bb);
+            
+            Thread.sleep(500);
+            long start = System.nanoTime();
+            long sent = 0;
+            
+            while (sent < N) {
+                buffer.putLong(0, sent);
+                if (pub.offer(buffer, 0, 8) > 0) {
+                    sent++;
+                }
+                if (sent % 20000 == 0 && sent > 0) {
+                    System.out.println("  sent: " + sent);
+                }
+            }
+            
+            double elapsed = (System.nanoTime() - start) / 1e9;
+            System.out.printf("SENT %d in %.2fs (%.2f M/s)%n", sent, elapsed, sent / elapsed / 1e6);
+        }
     }
     
     private static void runBenchmark(String channel, String label, int messageLength) throws Exception {

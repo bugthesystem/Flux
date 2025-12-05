@@ -5,6 +5,7 @@ edition = "2021"
 description = "Media driver for kaos IPC - offloads network I/O from apps"
 
 [dependencies]
+kaos = { path = "../kaos" }
 kaos-ipc = { path = "../kaos-ipc" }
 kaos-rudp = { path = "../kaos-rudp", optional = true }
 ctrlc = "3.4"

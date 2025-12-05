@@ -50,30 +50,33 @@ Kaos provides lock-free ring buffers for inter-thread, inter-process, and networ
 
 ## Performance
 
-Reference: Apple M4, macOS 15, SPSC, verified. Run on your hardware for accurate numbers.
+Reference: Apple M4, macOS 15, SPSC. Run on your hardware.
 
-### Full Stack (vs Aeron)
+### IPC vs Aeron
 
-| Component | Kaos | Aeron |
-|-----------|------|-------|
-| IPC (8B) | **254 M/s** | 18.7 M/s |
-| Language | Rust | Java |
+| Size | Kaos | Aeron | Speedup |
+|------|------|-------|---------|
+| 8B | **285 M/s** | 25 M/s | 11x |
+| 16B | **216 M/s** | 15 M/s | 14x |
+| 32B | **184 M/s** | 9 M/s | 20x |
+| 64B | **151 M/s** | 16 M/s | 9x |
 
-### Ring Buffer
+### Ring Buffer vs disruptor-rs
 
 | API | Kaos | disruptor-rs |
 |-----|------|--------------|
 | Batch | **2.1 G/s** | — |
 | Per-event | **416 M/s** | 140 M/s |
 
-### All Components
+### Summary
 
-| Component | Throughput | Latency |
-|-----------|------------|---------|
+| Component | Throughput | Bandwidth |
+|-----------|------------|-----------|
 | Ring buffer (batch) | 2.1 G/s | — |
 | Ring buffer (per-event) | 416 M/s | — |
-| IPC (mmap) | 254 M/s | 2.4 ns |
-| Reliable UDP | 3 M/s | — |
+| IPC (8B optimal) | 285 M/s | 2.3 GB/s |
+| IPC (64B max BW) | 151 M/s | 9.6 GB/s |
+| Reliable UDP | 12.5 M/s | — |
 
 ```bash
 # Run benchmarks
