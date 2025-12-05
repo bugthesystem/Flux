@@ -134,12 +134,12 @@ cd ext-benches/disruptor-java-bench && mvn compile -q && \
 | **Work distribution** | `SpmcRingBuffer` | direct | 1.1 G/s |
 | **Full flexibility** | `MpmcRingBuffer` | `CachedMpmcProducer` | 30 M/s |
 
-**When to use `Fast*` producers:**
+**When to use `Cached*` producers:**
 - `CachedProducer` - Caches consumer position, avoids atomic loads on hot path
 - `CachedMpscProducer` - Same caching + closure API for zero-copy writes
 - `CachedMpmcProducer` - Same caching + closure API, essential for MPMC performance
 
-**Rule of thumb:** Always prefer `Fast*` producers when available.
+**Rule of thumb:** Always prefer `Cached*` producers when available.
 
 ## Quick Start
 
