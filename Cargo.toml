@@ -4,7 +4,8 @@ members = [
     "kaos-rudp",
     "kaos-ipc",
     "kaos-test-support",
-    "kaos-driver"
+    "kaos-driver",
+    "kaos-archive"
 ]
 exclude = [
     "ext-libs"

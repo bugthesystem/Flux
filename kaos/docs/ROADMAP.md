@@ -14,7 +14,7 @@
 | AF_XDP kernel bypass | ⚠️ Compiles, needs testing |
 | Tracing / Tracy profiler | ✅ |
 | UDP multicast | ✅ |
-| Message archive | ⬜ Planned |
+| Message archive | ✅ |
 
 ## Architecture
 
