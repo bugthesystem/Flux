@@ -26,6 +26,12 @@ pub struct CompletionTracker {
     slot_completed: Box<[AtomicBool; MAX_SLOTS]>,
 }
 
+impl Default for CompletionTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CompletionTracker {
     pub fn new() -> Self {
         let slot_completed: Box<[AtomicBool; MAX_SLOTS]> = {

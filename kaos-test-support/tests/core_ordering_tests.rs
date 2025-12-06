@@ -34,7 +34,8 @@ fn test_spsc_ordering_small_slot() {
         let mut written = 0u64;
 
         while running_prod.load(Ordering::Relaxed) {
-            if let Some((seq, slots)) = ring_prod.try_claim_slots(1, cursor) {
+            // SAFETY: Single producer thread
+            if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(1, cursor) } {
                 slots[0].value = written;
                 ring_prod.publish(seq);
                 // Publish sequence for consumer
@@ -158,7 +159,8 @@ fn test_high_contention_ordering() {
         let mut written = 0u64;
 
         while running_prod.load(Ordering::Relaxed) {
-            if let Some((seq, slots)) = ring_prod.try_claim_slots(16, cursor) {
+            // SAFETY: Single producer thread
+            if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(16, cursor) } {
                 for (i, slot) in slots.iter_mut().enumerate() {
                     slot.value = written + i as u64;
                 }
@@ -231,7 +233,8 @@ fn test_sequence_wraparound() {
 
     for i in 0..iterations {
         // Try to write
-        if let Some((seq, slots)) = ring.try_claim_slots(1, cursor) {
+        // SAFETY: Single-threaded test, no concurrent access
+        if let Some((seq, slots)) = unsafe { ring.try_claim_slots_unchecked(1, cursor) } {
             slots[0].value = i as u64;
             ring.publish(seq);
             cursor = seq + 1;

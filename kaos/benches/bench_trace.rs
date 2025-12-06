@@ -111,7 +111,7 @@ fn run_bench<T: RingBufferEntry + Copy + Default + Send + Sync + 'static>(
             let remaining = (total_events - sent) as usize;
             let batch = remaining.min(BATCH_SIZE);
 
-            if let Some((seq, slots)) = ring_prod.try_claim_slots(batch, cursor) {
+            if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(batch, cursor) } {
                 for slot in slots.iter_mut() {
                     slot.set_sequence(event_type);
                     event_type = if event_type >= EVENT_LOGIN {

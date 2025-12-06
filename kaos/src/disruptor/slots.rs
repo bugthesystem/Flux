@@ -110,14 +110,6 @@ impl RingBufferEntry for Slot64 {
 const MAX_MESSAGE_DATA_SIZE: usize = 1024;
 // Note: align(128) used directly for cache-line alignment (128B on Apple Silicon, 64B on x86)
 
-/// Message type (only Data is actively used)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[repr(u8)]
-pub enum MessageType {
-    #[default]
-    Data = 0,
-}
-
 /// 128-byte aligned to prevent false sharing (Apple Silicon has 128B cache lines).
 /// Note: Cannot derive Pod due to alignment padding, but Zeroable is safe.
 #[repr(C, align(128))]

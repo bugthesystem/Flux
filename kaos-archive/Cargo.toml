@@ -5,6 +5,7 @@ edition = "2021"
 description = "High-performance message archive for Kaos"
 
 [dependencies]
+kaos = { path = "../kaos" }
 memmap2 = "0.9"
 thiserror = "2"
 

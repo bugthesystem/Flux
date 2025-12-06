@@ -140,7 +140,28 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         }
     }
 
-    pub fn try_claim_slots(&self, count: usize, local_cursor: u64) -> Option<(u64, &mut [T])> {
+    /// Try to claim slots for writing.
+    ///
+    /// Returns the starting sequence and a mutable slice of slots if space is available.
+    /// The caller must ensure slots are published via `publish()` after writing.
+    pub fn try_claim_slots(&mut self, count: usize, local_cursor: u64) -> Option<(u64, &mut [T])> {
+        // Safe: &mut self guarantees exclusive access
+        unsafe { self.try_claim_slots_unchecked(count, local_cursor) }
+    }
+
+    /// Try to claim slots for writing (unchecked variant for single-producer patterns).
+    ///
+    /// Returns the starting sequence and a mutable slice of slots if space is available.
+    /// The caller must ensure slots are published via `publish()` after writing.
+    ///
+    /// # Safety
+    ///
+    /// - Only ONE producer may call this method at a time (single-producer guarantee).
+    /// - The caller must ensure no concurrent writes to the same slots.
+    /// - The returned slice must not outlive the ring buffer.
+    #[inline]
+    #[allow(clippy::mut_from_ref)] // Intentional: single-producer guarantee documented in Safety
+    pub unsafe fn try_claim_slots_unchecked(&self, count: usize, local_cursor: u64) -> Option<(u64, &mut [T])> {
         if count == 0 {
             return None;
         }
@@ -156,7 +177,7 @@ impl<T: RingBufferEntry> RingBuffer<T> {
                 self.size
             );
             let slots = if end_idx <= self.size {
-                unsafe { std::slice::from_raw_parts_mut(self.buffer.add(start_idx), count) }
+                std::slice::from_raw_parts_mut(self.buffer.add(start_idx), count)
             } else {
                 let len = self.size - start_idx;
                 debug_assert!(
@@ -165,7 +186,7 @@ impl<T: RingBufferEntry> RingBuffer<T> {
                     len,
                     self.size
                 );
-                unsafe { std::slice::from_raw_parts_mut(self.buffer.add(start_idx), len) }
+                std::slice::from_raw_parts_mut(self.buffer.add(start_idx), len)
             };
             Some((local_cursor, slots))
         } else {
@@ -255,7 +276,13 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         unsafe { std::slice::from_raw_parts(self.buffer.add(start_idx), actual) }
     }
 
-    /// Write a value to a slot. Safe path includes bounds check.
+    /// Write a value to a slot.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim` or `try_claim_slots`.
+    /// - The caller must ensure no concurrent reads/writes to the same slot.
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
@@ -263,7 +290,13 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         std::ptr::write_volatile(self.buffer.add(idx), value);
     }
 
-    /// Write a value to a slot. Safe path includes bounds check.
+    /// Write a value to a slot.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim` or `try_claim_slots`.
+    /// - The caller must ensure no concurrent reads/writes to the same slot.
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
@@ -282,7 +315,13 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         self.producer_cursor.store(sequence, Ordering::Relaxed);
     }
 
-    /// Read a value from a slot. Safe path includes bounds check.
+    /// Read a value from a slot.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by the producer.
+    /// - The caller must ensure the slot is not being written concurrently.
+    /// - Call `update_consumer()` after processing to advance the consumer cursor.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
@@ -290,7 +329,13 @@ impl<T: RingBufferEntry> RingBuffer<T> {
         std::ptr::read_volatile(self.buffer.add(idx))
     }
 
-    /// Read a value from a slot. Safe path includes bounds check.
+    /// Read a value from a slot.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by the producer.
+    /// - The caller must ensure the slot is not being written concurrently.
+    /// - Call `update_consumer()` after processing to advance the consumer cursor.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
@@ -551,6 +596,19 @@ impl<T: RingBufferEntry> BroadcastRingBuffer<T> {
     }
 
     pub fn try_claim_slots_relaxed(&mut self, count: usize) -> Option<(u64, &mut [T])> {
+        // Safe: &mut self guarantees exclusive access
+        unsafe { self.try_claim_slots_relaxed_unchecked(count) }
+    }
+
+    /// Try to claim slots for writing (unchecked variant for single-producer patterns).
+    ///
+    /// # Safety
+    ///
+    /// - Only ONE producer may call this method at a time (single-producer guarantee).
+    /// - The caller must ensure no concurrent writes to the same slots.
+    #[inline]
+    #[allow(clippy::mut_from_ref)] // Intentional: single-producer guarantee documented in Safety
+    pub unsafe fn try_claim_slots_relaxed_unchecked(&self, count: usize) -> Option<(u64, &mut [T])> {
         let current = self.producer_sequence.load(Ordering::Relaxed);
         let next = current.wrapping_add(count as u64);
 
@@ -560,6 +618,7 @@ impl<T: RingBufferEntry> BroadcastRingBuffer<T> {
                 return None;
             }
         } else if next.wrapping_sub(min_consumer) > (self.config.size as u64) {
+            // update_gating_sequence only uses atomic operations, safe with &self
             self.update_gating_sequence();
             std::sync::atomic::fence(Ordering::Acquire);
             min_consumer = self.gating_sequence.load(Ordering::Relaxed);
@@ -571,7 +630,8 @@ impl<T: RingBufferEntry> BroadcastRingBuffer<T> {
         let start_seq = current.wrapping_add(1);
         let start_idx = (start_seq as usize) & self.mask;
         let available = self.config.size - start_idx;
-        let slots = &mut self.buffer[start_idx..start_idx + count.min(available)];
+        let buffer_ptr = self.buffer.as_ptr() as *mut T;
+        let slots = std::slice::from_raw_parts_mut(buffer_ptr.add(start_idx), count.min(available));
         Some((start_seq, slots))
     }
 
@@ -772,6 +832,12 @@ pub struct ProducerBuilder<T: RingBufferEntry> {
     _phantom: PhantomData<T>,
 }
 
+impl<T: RingBufferEntry> Default for ProducerBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: RingBufferEntry> ProducerBuilder<T> {
     pub fn new() -> Self {
         Self {
@@ -847,6 +913,12 @@ pub struct ConsumerBuilder<T: RingBufferEntry> {
     consumer_id: usize,
     batch_size: usize,
     _phantom: PhantomData<T>,
+}
+
+impl<T: RingBufferEntry> Default for ConsumerBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: RingBufferEntry> ConsumerBuilder<T> {

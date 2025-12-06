@@ -223,12 +223,26 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
         Some(seq)
     }
 
+    /// Write a value to a slot in shared memory.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim`.
+    /// - Only the producer process should call this method.
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn write_slot(&mut self, seq: u64, value: T) {
         std::ptr::write_volatile(self.slot_ptr(seq), value);
     }
 
+    /// Write a value to a slot in shared memory.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim`.
+    /// - Only the producer process should call this method.
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn write_slot(&mut self, seq: u64, value: T) {
@@ -305,12 +319,26 @@ impl<T: RingBufferEntry> SharedRingBuffer<T> {
         count
     }
 
+    /// Read a value from a slot in shared memory.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by the producer.
+    /// - Only the consumer process should call this method.
+    /// - Call `advance_consumer()` after processing to update the consumer cursor.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn read_slot(&self, seq: u64) -> T {
         std::ptr::read_volatile(self.slot_ptr(seq))
     }
 
+    /// Read a value from a slot in shared memory.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by the producer.
+    /// - Only the consumer process should call this method.
+    /// - Call `advance_consumer()` after processing to update the consumer cursor.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn read_slot(&self, seq: u64) -> T {

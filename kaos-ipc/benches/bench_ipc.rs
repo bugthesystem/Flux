@@ -1,7 +1,7 @@
 //! kaos-ipc benchmarks - IPC throughput tests
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
-use kaos_ipc::{Publisher, Slot8, Subscriber};
+use kaos_ipc::{Publisher, Subscriber};
 use std::fs;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -28,10 +28,10 @@ fn bench_single_msg(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
 
     group.bench_function("send_8B", |b| {
-        let mut publisher = Publisher::<Slot8>::new(path, RING_SIZE).unwrap();
-        let mut subscriber = Subscriber::<Slot8>::new(path).unwrap();
+        let mut publisher = Publisher::create(path, RING_SIZE).unwrap();
+        let mut subscriber = Subscriber::open(path).unwrap();
         b.iter(|| {
-            let _ = publisher.send(black_box(&[1u8; 8]));
+            let _ = publisher.send(black_box(1u64));
             subscriber.receive(|_| {});
         });
     });
@@ -50,14 +50,14 @@ fn bench_sustained(c: &mut Criterion) {
     group.sample_size(20);
 
     group.bench_function("100K_msgs", |b| {
-        let mut publisher = Publisher::<Slot8>::new(path, RING_SIZE).unwrap();
-        let mut subscriber = Subscriber::<Slot8>::new(path).unwrap();
+        let mut publisher = Publisher::create(path, RING_SIZE).unwrap();
+        let mut subscriber = Subscriber::open(path).unwrap();
         b.iter(|| {
             let mut sent = 0;
             let mut received = 0;
             while received < EVENTS {
                 while sent < EVENTS && sent - received < RING_SIZE - 1024 {
-                    if publisher.send(black_box(&[1u8; 8])).is_ok() {
+                    if publisher.send(black_box(1u64)).is_ok() {
                         sent += 1;
                     }
                 }
@@ -97,11 +97,11 @@ fn bench_trace_events(c: &mut Criterion) {
 
             let running_pub = running.clone();
             let publisher = thread::spawn(move || {
-                let mut pub_handle = Publisher::<Slot8>::new(path, RING_SIZE).unwrap();
+                let mut pub_handle = Publisher::create(path, RING_SIZE).unwrap();
                 let mut event_type = EVENT_CLICK;
                 let mut sent = 0u64;
                 while sent < TOTAL_EVENTS && running_pub.load(Ordering::Relaxed) {
-                    if pub_handle.send(&event_type.to_le_bytes()).is_ok() {
+                    if pub_handle.send(event_type).is_ok() {
                         sent += 1;
                         event_type = if event_type >= EVENT_LOGIN {
                             EVENT_CLICK
@@ -118,11 +118,11 @@ fn bench_trace_events(c: &mut Criterion) {
             let running_sub = running.clone();
             let c = counts.clone();
             let subscriber = thread::spawn(move || {
-                let mut sub_handle = Subscriber::<Slot8>::new(path).unwrap();
+                let mut sub_handle = Subscriber::open(path).unwrap();
                 let mut local = [0u64; 5];
                 let mut received = 0u64;
                 while received < TOTAL_EVENTS && running_sub.load(Ordering::Relaxed) {
-                    received += sub_handle.receive(|slot| match slot.value {
+                    received += sub_handle.receive(|value| match value {
                         EVENT_CLICK => {
                             local[0] += 1;
                         }

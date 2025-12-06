@@ -33,7 +33,8 @@ fn main() {
             let batch = remaining.min(BATCH_SIZE);
 
             // Claim slots and write
-            if let Some((seq, slots)) = ring_prod.try_claim_slots(batch, cursor) {
+            // SAFETY: Single producer thread
+            if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(batch, cursor) } {
                 for (i, slot) in slots.iter_mut().enumerate() {
                     slot.set_sequence(sent + i as u64 + 1);
                 }

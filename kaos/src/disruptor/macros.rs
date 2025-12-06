@@ -9,6 +9,8 @@
 //! | `publish_unrolled!` | 8x unrolled batch publish |
 
 /// Publish using slice API - Direct slice access.
+///
+/// Requires mutable access to the ring buffer for safe slot claiming.
 #[macro_export]
 macro_rules! publish_batch {
     (
@@ -20,8 +22,8 @@ macro_rules! publish_batch {
         $slot:ident,
         $body:block
     ) => {{
-        // Safe: Arc::as_ref gives safe reference
-        let ring_ref: &$crate::disruptor::RingBuffer<$slot_type> = $ring.as_ref();
+        // Requires mutable reference for safe slot access
+        let ring_ref: &mut $crate::disruptor::RingBuffer<$slot_type> = &mut *$ring;
 
         if let Some((seq, slots)) = ring_ref.try_claim_slots($batch_size, $cursor) {
             let count = slots.len();
@@ -73,9 +75,9 @@ macro_rules! consume_batch {
 
 /// Publish with 8x loop unrolling for MessageRingBuffer
 ///
-/// # Safety (unsafe-perf feature)
-/// Uses `get_unchecked_mut` for max performance.
-/// Safe mode uses bounds-checked indexing.
+/// # Safety
+/// - Only use from a single producer thread
+/// - Uses `get_unchecked_mut` when `unsafe-perf` feature is enabled
 #[macro_export]
 macro_rules! publish_unrolled {
     (
@@ -88,10 +90,11 @@ macro_rules! publish_unrolled {
     ) => {
         {
         let rb_ptr = $producer.ring_buffer;
-        // Safety: rb_ptr valid for Producer's lifetime
-        let rb = unsafe { &mut *rb_ptr };
+        // SAFETY: rb_ptr is valid for Producer's lifetime, single producer guarantee
+        let rb = unsafe { &*rb_ptr };
 
-        if let Some(($seq, slots)) = rb.try_claim_slots_relaxed($batch_size) {
+        // SAFETY: Single producer thread guarantee
+        if let Some(($seq, slots)) = unsafe { rb.try_claim_slots_relaxed_unchecked($batch_size) } {
             let count = slots.len();
             let mut $idx = 0;
 

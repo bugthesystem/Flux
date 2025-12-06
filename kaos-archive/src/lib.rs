@@ -8,6 +8,7 @@
 //! let msg = archive.read(seq).unwrap();
 //! ```
 
+use kaos::crc32::crc32_simd;
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::{File, OpenOptions};
 use std::io;
@@ -160,7 +161,7 @@ impl Archive {
         // Write frame header
         let frame = FrameHeader {
             length: data.len() as u32,
-            checksum: crc32(data),
+            checksum: crc32_simd(data),
         };
         let frame_bytes = unsafe {
             std::slice::from_raw_parts(&frame as *const FrameHeader as *const u8, FRAME_HEADER_SIZE)
@@ -213,11 +214,14 @@ impl Archive {
         let offset = entry.offset as usize;
         let length = entry.length as usize;
 
-        // Verify checksum
-        let frame = unsafe { &*(self.log_mmap.as_ptr().add(offset) as *const FrameHeader) };
+        // Read checksum from frame header (may be unaligned, so read directly from bytes)
+        let checksum_offset = offset + 4; // checksum is at offset 4 in FrameHeader (after length u32)
+        let checksum_bytes = &self.log_mmap[checksum_offset..checksum_offset + 4];
+        let checksum = u32::from_ne_bytes([checksum_bytes[0], checksum_bytes[1], checksum_bytes[2], checksum_bytes[3]]);
         let data = &self.log_mmap[offset + FRAME_HEADER_SIZE..offset + FRAME_HEADER_SIZE + length];
 
-        if crc32(data) != frame.checksum {
+        // Verify checksum
+        if crc32_simd(data) != checksum {
             return Err(ArchiveError::Corrupted);
         }
 
@@ -286,22 +290,6 @@ impl Archive {
     fn header(&self) -> &LogHeader {
         unsafe { &*(self.log_mmap.as_ptr() as *const LogHeader) }
     }
-}
-
-/// Simple CRC32 (same as kaos crate).
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc: u32 = 0xFFFFFFFF;
-    for &byte in data {
-        crc ^= byte as u32;
-        for _ in 0..8 {
-            crc = if crc & 1 != 0 {
-                (crc >> 1) ^ 0xEDB88320
-            } else {
-                crc >> 1
-            };
-        }
-    }
-    !crc
 }
 
 #[cfg(test)]

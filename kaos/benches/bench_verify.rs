@@ -63,7 +63,7 @@ fn bench_sum_verify(events: u64) -> u64 {
     while cursor < events {
         let remaining = (events - cursor) as usize;
         let batch = remaining.min(BATCH_SIZE);
-        if let Some((seq, slots)) = ring_prod.try_claim_slots(batch, cursor) {
+        if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(batch, cursor) } {
             for (i, slot) in slots.iter_mut().enumerate() {
                 slot.value = (cursor + i as u64) % 100;
             }
@@ -120,7 +120,7 @@ fn bench_sequence_verify(events: u64) -> u64 {
     while cursor < events {
         let remaining = (events - cursor) as usize;
         let batch = remaining.min(BATCH_SIZE);
-        if let Some((seq, slots)) = ring_prod.try_claim_slots(batch, cursor) {
+        if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(batch, cursor) } {
             for slot in slots.iter_mut() {
                 slot.value = seq_num;
                 seq_num += 1;

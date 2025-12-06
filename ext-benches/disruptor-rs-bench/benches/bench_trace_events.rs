@@ -90,7 +90,8 @@ fn run_kaos_trace_events() -> (u64, bool) {
         let remaining = (TOTAL_EVENTS - cursor) as usize;
         let batch = remaining.min(BATCH_SIZE);
 
-        if let Some((seq, slots)) = ring_prod.try_claim_slots(batch, cursor) {
+        // SAFETY: Single producer thread
+        if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(batch, cursor) } {
             for slot in slots.iter_mut() {
                 slot.value = event_type;
                 event_type = if event_type >= EVENT_LOGIN { EVENT_CLICK } else { event_type + 1 };

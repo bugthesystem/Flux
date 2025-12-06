@@ -1,9 +1,6 @@
 //! # kaos-rudp
 //!
 //! Reliable UDP transport built on kaos ring buffers.
-
-#![allow(unused_variables)]
-#![allow(clippy::needless_range_loop)]
 //!
 //! ## Features
 //!
@@ -142,7 +139,7 @@ impl ReliableUdpHeader {
     pub fn new(session_id: u32, sequence: u64, msg_type: MessageType, payload_len: u16) -> Self {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or_default()
             .as_millis() as u32;
 
         Self {
@@ -223,7 +220,6 @@ pub struct ReliableUdpRingBufferTransport {
     recv_window: BitmapWindow,
     window_size: usize,
     next_send_seq: u64,
-    _next_recv_seq: u64,
     acked_seq: u64,
     remote_addr: SocketAddr,
     remote_nak_addr: SocketAddr,
@@ -307,7 +303,6 @@ impl ReliableUdpRingBufferTransport {
             recv_window: BitmapWindow::new(window_size, 0),
             window_size,
             next_send_seq: 0,
-            _next_recv_seq: 0,
             acked_seq: 0,
             remote_addr,
             remote_nak_addr,
@@ -431,9 +426,8 @@ impl ReliableUdpRingBufferTransport {
                     buf.reserve(estimated_size - current_cap);
                 }
 
-                for i in 0..actual {
+                for (i, msg) in data.iter().take(actual).enumerate() {
                     let seq = (slot_seq + (i as u64)) as u32;
-                    let msg = data[i];
 
                     // Minimal 8-byte header
                     let header = FastHeader::new(seq, msg.len());
@@ -610,13 +604,13 @@ impl ReliableUdpRingBufferTransport {
     /// Process incoming NAKs and retransmit as needed
     pub fn process_naks(&mut self) {
         let mut buf = [0u8; 2048];
-        let mut nak_count = 0;
-        let mut retransmit_count = 0;
+        let mut _nak_count = 0;
+        let mut _retransmit_count = 0;
 
         loop {
             match self.nak_socket.recv_from(&mut buf) {
                 Ok((len, src)) => {
-                    nak_count += 1;
+                    _nak_count += 1;
 
                     if len < ReliableUdpHeader::SIZE {
                         #[cfg(feature = "debug")]
@@ -664,7 +658,7 @@ impl ReliableUdpRingBufferTransport {
                                     i, start_seq, end_seq, count
                                 );
                                 self.retransmit_batch(start_seq, end_seq);
-                                retransmit_count += count;
+                                _retransmit_count += count;
                             }
                         } else {
                             #[cfg(feature = "debug")]
@@ -673,7 +667,7 @@ impl ReliableUdpRingBufferTransport {
                                 src, sequence
                             );
                             self.retransmit(sequence);
-                            retransmit_count += 1;
+                            _retransmit_count += 1;
                         }
                     } else {
                         #[cfg(feature = "debug")]

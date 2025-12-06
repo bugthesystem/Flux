@@ -70,9 +70,7 @@ impl ReliableWindowRingBuffer {
             if slot.valid && slot.seq == self.next_expected_seq {
                 f(&slot.data[..slot.len]);
                 slot.valid = false;
-                let _prev_seq = self.next_expected_seq;
                 self.next_expected_seq += 1;
-                if self.next_expected_seq % (self.window_size as u64) == 0 {}
             } else {
                 break;
             }

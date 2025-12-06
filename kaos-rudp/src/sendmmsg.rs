@@ -156,6 +156,7 @@ unsafe impl Send for BatchReceiver {}
 pub struct BatchSender;
 
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)]
 impl BatchSender {
     pub fn new(_: usize) -> Self {
         Self
@@ -173,6 +174,7 @@ impl BatchSender {
 pub struct BatchReceiver;
 
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)]
 impl BatchReceiver {
     pub fn new(_: usize, _: usize) -> Self {
         Self

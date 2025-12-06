@@ -85,6 +85,13 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
         }
     }
 
+    /// Write a value to a slot.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim`.
+    /// - The caller must ensure no concurrent reads/writes to the same slot.
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
@@ -92,6 +99,13 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 
+    /// Write a value to a slot.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim`.
+    /// - The caller must ensure no concurrent reads/writes to the same slot.
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
@@ -152,6 +166,13 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
         }
     }
 
+    /// Read a value from a slot.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by a producer.
+    /// - The caller must ensure the slot is not being written concurrently.
+    /// - Call `update_consumer()` after processing to advance the consumer cursor.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
@@ -159,6 +180,13 @@ impl<T: RingBufferEntry> MpscRingBuffer<T> {
         std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
     }
 
+    /// Read a value from a slot.
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by a producer.
+    /// - The caller must ensure the slot is not being written concurrently.
+    /// - Call `update_consumer()` after processing to advance the consumer cursor.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
@@ -282,6 +310,12 @@ pub struct MpscProducerBuilder<T: RingBufferEntry> {
     ring_buffer: Option<Arc<MpscRingBuffer<T>>>,
 }
 
+impl<T: RingBufferEntry> Default for MpscProducerBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: RingBufferEntry> MpscProducerBuilder<T> {
     pub fn new() -> Self {
         Self { ring_buffer: None }
@@ -340,6 +374,12 @@ impl<T: RingBufferEntry> MpscConsumer<T> {
 pub struct MpscConsumerBuilder<T: RingBufferEntry> {
     ring_buffer: Option<Arc<MpscRingBuffer<T>>>,
     batch_size: usize,
+}
+
+impl<T: RingBufferEntry> Default for MpscConsumerBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: RingBufferEntry> MpscConsumerBuilder<T> {
@@ -402,6 +442,13 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
         }
     }
 
+    /// Write a value to a slot (SPMC: single producer writes).
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim`.
+    /// - Only the single producer should call this method.
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
@@ -409,6 +456,13 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 
+    /// Write a value to a slot (SPMC: single producer writes).
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim`.
+    /// - Only the single producer should call this method.
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
@@ -462,6 +516,13 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
         }
     }
 
+    /// Read a value from a slot (SPMC: multiple consumers read).
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by the producer.
+    /// - The sequence must have been claimed via `try_claim_read`.
+    /// - Call `complete_read()` after processing to mark the slot as consumed.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
@@ -469,6 +530,13 @@ impl<T: RingBufferEntry> SpmcRingBuffer<T> {
         std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
     }
 
+    /// Read a value from a slot (SPMC: multiple consumers read).
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by the producer.
+    /// - The sequence must have been claimed via `try_claim_read`.
+    /// - Call `complete_read()` after processing to mark the slot as consumed.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
@@ -619,6 +687,13 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
         }
     }
 
+    /// Write a value to a slot (MPMC: multiple producers write).
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim`.
+    /// - Each producer writes only to its own claimed sequence(s).
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
@@ -626,6 +701,13 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
         std::ptr::write_volatile(self.buffer.as_ptr().add(idx) as *mut T, value);
     }
 
+    /// Write a value to a slot (MPMC: multiple producers write).
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been claimed via `try_claim`.
+    /// - Each producer writes only to its own claimed sequence(s).
+    /// - The slot must be published after writing via `publish()`.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn write_slot(&self, sequence: u64, value: T) {
@@ -718,6 +800,13 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
         seq.min(claimed).saturating_sub(1)
     }
 
+    /// Read a value from a slot (MPMC: multiple consumers read).
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by a producer.
+    /// - The consumer must have claimed this sequence via CAS on consumer_cursor.
+    /// - Call `update_consumer()` after processing to release the slot.
     #[cfg(feature = "unsafe-perf")]
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {
@@ -725,6 +814,13 @@ impl<T: RingBufferEntry> MpmcRingBuffer<T> {
         std::ptr::read_volatile(self.buffer.as_ptr().add(idx))
     }
 
+    /// Read a value from a slot (MPMC: multiple consumers read).
+    ///
+    /// # Safety
+    ///
+    /// - The sequence must have been published by a producer.
+    /// - The consumer must have claimed this sequence via CAS on consumer_cursor.
+    /// - Call `update_consumer()` after processing to release the slot.
     #[cfg(not(feature = "unsafe-perf"))]
     #[inline(always)]
     pub unsafe fn read_slot(&self, sequence: u64) -> T {

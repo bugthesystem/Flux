@@ -53,7 +53,7 @@ fn bench_batch(events: u64) -> u64 {
     while cursor < events {
         let remaining = (events - cursor) as usize;
         let batch = remaining.min(BATCH_SIZE);
-        if let Some((seq, slots)) = ring_prod.try_claim_slots(batch, cursor) {
+        if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(batch, cursor) } {
             for (i, slot) in slots.iter_mut().enumerate() {
                 slot.value = cursor + (i as u64);
             }
@@ -101,11 +101,15 @@ fn bench_macros(events: u64) -> u64 {
     let mut cursor = 0u64;
     while cursor < events {
         let batch = ((events - cursor) as usize).min(BATCH_SIZE);
-        if publish_batch!(Slot8, ring_prod, cursor, batch, i, slot, {
-            slot.value = cursor + (i as u64);
-        })
-        .is_err()
-        {
+        // SAFETY: Single producer thread
+        if let Some((seq, slots)) = unsafe { ring_prod.try_claim_slots_unchecked(batch, cursor) } {
+            for (i, slot) in slots.iter_mut().enumerate() {
+                slot.value = cursor + (i as u64);
+            }
+            let next = seq + slots.len() as u64;
+            ring_prod.publish(next);
+            cursor = next;
+        } else {
             std::hint::spin_loop();
         }
     }

@@ -53,17 +53,16 @@ fn kaos_batch(events: u64) -> u64 {
         }
     });
 
-    let ring_ptr = Arc::as_ptr(&ring) as *const RingBuffer<Slot8>;
     let mut cursor = 0u64;
     while cursor < events {
-        let ring_ref = unsafe { &*ring_ptr };
         let remaining = (events - cursor) as usize;
         let batch = remaining.min(BATCH_SIZE);
-        if let Some((seq, slots)) = ring_ref.try_claim_slots(batch, cursor) {
+        // SAFETY: Single producer thread
+        if let Some((seq, slots)) = unsafe { ring.try_claim_slots_unchecked(batch, cursor) } {
             for (i, slot) in slots.iter_mut().enumerate() {
                 slot.set_sequence(((cursor + (i as u64)) % 5) + 1);
             }
-            ring_ref.publish(seq + (slots.len() as u64));
+            ring.publish(seq + (slots.len() as u64));
             cursor = seq + (slots.len() as u64);
         }
     }

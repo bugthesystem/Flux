@@ -75,6 +75,12 @@ pub struct StressMetrics {
     pub peak_rate: f64,
 }
 
+impl Default for StressMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StressMetrics {
     pub fn new() -> Self {
         Self {
